@@ -19,8 +19,11 @@ Rust web framework for micro-SaaS. Single binary, SQLite-only, maximum compile-t
 
 ## Commands
 
+- `just fmt` — format all code
+- `just lint` — clippy with `-D warnings` (all workspace targets/features)
+- `just test` — run all workspace tests
+- `just check` — fmt-check + lint + test (CI/pre-push)
 - `cargo check` — type check
-- `cargo test` — run all tests
 - `cargo build --example hello` — build example
 - `cargo run --example hello` — run example server
 
