@@ -1,5 +1,6 @@
 use crate::config::{AppConfig, Environment};
 use crate::router::{ModuleRegistration, RouteRegistration};
+use crate::session::SqliteSessionStore;
 use axum::Router;
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
@@ -17,6 +18,7 @@ pub struct AppState {
     pub services: ServiceRegistry,
     pub config: AppConfig,
     pub cookie_key: Key,
+    pub session_store: Option<Arc<SqliteSessionStore>>,
 }
 
 impl FromRef<AppState> for Key {
@@ -50,6 +52,7 @@ pub struct AppBuilder {
     config: AppConfig,
     services: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
     layers: Vec<LayerFn>,
+    enable_sessions: bool,
 }
 
 impl AppBuilder {
@@ -58,7 +61,15 @@ impl AppBuilder {
             config,
             services: HashMap::new(),
             layers: Vec::new(),
+            enable_sessions: false,
         }
+    }
+
+    /// Enable SQLite-backed session storage.
+    /// Creates the sessions table and registers SqliteSessionStore as a service.
+    pub fn sessions(mut self) -> Self {
+        self.enable_sessions = true;
+        self
     }
 
     pub fn service<T: Send + Sync + 'static>(mut self, svc: T) -> Self {
@@ -82,7 +93,7 @@ impl AppBuilder {
         self
     }
 
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
         let db = if !self.config.database_url.is_empty() {
             let mut opts = ConnectOptions::new(&self.config.database_url);
             opts.max_connections(5).min_connections(1);
@@ -112,6 +123,27 @@ impl AppBuilder {
             Key::derive_from(self.config.secret_key.as_bytes())
         };
 
+        let session_store = if self.enable_sessions {
+            let db_conn = db
+                .as_ref()
+                .ok_or("Sessions require a database connection")?
+                .clone();
+            let store = SqliteSessionStore::new(
+                db_conn,
+                self.config.session_ttl,
+                self.config.session_max_per_user,
+            );
+            store.initialize().await?;
+            info!("Session store initialized");
+            let arc_store = Arc::new(store);
+            // Also register as a service so handlers can use Service<SqliteSessionStore>
+            self.services
+                .insert(TypeId::of::<SqliteSessionStore>(), arc_store.clone());
+            Some(arc_store)
+        } else {
+            None
+        };
+
         let state = AppState {
             db,
             services: ServiceRegistry {
@@ -119,6 +151,7 @@ impl AppBuilder {
             },
             config: self.config.clone(),
             cookie_key,
+            session_store,
         };
 
         // Collect module registrations into a lookup by name
