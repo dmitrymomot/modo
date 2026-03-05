@@ -2,7 +2,7 @@
 
 Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB support.
 
-## NEXT SESSION: Major Refactor (2026-03-07)
+## NEXT SESSION: Major Refactor (2026-03-06)
 
 **IMPORTANT: Read `docs/plans/2026-03-06-crate-split-design.md` before doing anything.**
 
