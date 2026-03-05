@@ -47,14 +47,15 @@ impl SessionManager {
     ///
     /// Destroys any existing session first (fixation prevention).
     /// The session cookie is set automatically on the response.
-    pub async fn authenticate(&self, user_id: &str) -> Result<(), RskitError> {
+    pub async fn authenticate(&mut self, user_id: &str) -> Result<(), RskitError> {
         if let Some(ref session) = self.state.current_session {
             let _ = self.state.store.destroy(&session.id).await;
         }
 
         let session_id = self.state.store.create(user_id, &self.state.meta).await?;
         *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
-            SessionAction::Set(session_id);
+            SessionAction::Set(session_id.clone());
+        self.state.current_session = self.state.store.read(&session_id).await?;
         Ok(())
     }
 
@@ -62,7 +63,7 @@ impl SessionManager {
     ///
     /// Same as [`authenticate()`](Self::authenticate) but stores additional JSON data.
     pub async fn authenticate_with(
-        &self,
+        &mut self,
         user_id: &str,
         data: serde_json::Value,
     ) -> Result<(), RskitError> {
@@ -76,7 +77,8 @@ impl SessionManager {
             .create_with(user_id, &self.state.meta, data)
             .await?;
         *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
-            SessionAction::Set(session_id);
+            SessionAction::Set(session_id.clone());
+        self.state.current_session = self.state.store.read(&session_id).await?;
         Ok(())
     }
 
