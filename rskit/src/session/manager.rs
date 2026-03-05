@@ -2,7 +2,7 @@ use crate::app::AppState;
 use crate::error::RskitError;
 use crate::session::meta::SessionMeta;
 use crate::session::store::SessionStoreDyn;
-use crate::session::types::{SessionData, SessionId};
+use crate::session::types::{SessionData, generate_session_token};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use serde::Serialize;
@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub(crate) enum SessionAction {
     None,
-    Set(SessionId),
+    Set(String),
     Remove,
 }
 
@@ -53,9 +53,14 @@ impl SessionManager {
         }
 
         let session_id = self.state.store.create(user_id, &self.state.meta).await?;
-        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
-            SessionAction::Set(session_id.clone());
         self.state.current_session = self.state.store.read(&session_id).await?;
+        let token = self
+            .state
+            .current_session
+            .as_ref()
+            .map(|s| s.token.clone())
+            .unwrap_or_default();
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) = SessionAction::Set(token);
         Ok(())
     }
 
@@ -76,27 +81,33 @@ impl SessionManager {
             .store
             .create_with(user_id, &self.state.meta, data)
             .await?;
-        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
-            SessionAction::Set(session_id.clone());
         self.state.current_session = self.state.store.read(&session_id).await?;
+        let token = self
+            .state
+            .current_session
+            .as_ref()
+            .map(|s| s.token.clone())
+            .unwrap_or_default();
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) = SessionAction::Set(token);
         Ok(())
     }
 
     /// Destroy the current session.
     ///
     /// The session cookie is removed automatically on the response.
-    pub async fn logout(&self) -> Result<(), RskitError> {
+    pub async fn logout(&mut self) -> Result<(), RskitError> {
         if let Some(ref session) = self.state.current_session {
             self.state.store.destroy(&session.id).await?;
         }
         *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) = SessionAction::Remove;
+        self.state.current_session = None;
         Ok(())
     }
 
     /// Destroy ALL sessions for the current user.
     ///
     /// The session cookie is removed automatically on the response.
-    pub async fn logout_all(&self) -> Result<(), RskitError> {
+    pub async fn logout_all(&mut self) -> Result<(), RskitError> {
         if let Some(ref session) = self.state.current_session {
             self.state
                 .store
@@ -104,6 +115,39 @@ impl SessionManager {
                 .await?;
         }
         *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) = SessionAction::Remove;
+        self.state.current_session = None;
+        Ok(())
+    }
+
+    /// Destroy all sessions for the current user except the current one.
+    pub async fn logout_other(&mut self) -> Result<(), RskitError> {
+        if let Some(ref session) = self.state.current_session {
+            self.state
+                .store
+                .destroy_all_except(&session.user_id, &session.id)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// Regenerate the session token without changing the session ID.
+    ///
+    /// Use after password change or privilege escalation.
+    /// The new token is sent to the client via an updated cookie.
+    pub async fn rotate(&mut self) -> Result<(), RskitError> {
+        let session = self
+            .state
+            .current_session
+            .as_ref()
+            .ok_or_else(|| RskitError::internal("no active session"))?;
+        let new_token = generate_session_token();
+        self.state
+            .store
+            .update_token(&session.id, &new_token)
+            .await?;
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
+            SessionAction::Set(new_token.clone());
+        self.state.current_session.as_mut().unwrap().token = new_token;
         Ok(())
     }
 
@@ -206,5 +250,240 @@ impl FromRequestParts<AppState> for SessionManager {
             .ok_or_else(|| RskitError::internal("SessionManager requires session middleware"))?;
 
         Ok(Self { state })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::store::SessionStore;
+    use crate::session::types::{SessionId, generate_session_token};
+    use std::collections::HashMap;
+    use std::sync::Mutex as StdMutex;
+
+    struct MemoryStore {
+        sessions: StdMutex<HashMap<String, SessionData>>,
+    }
+
+    impl MemoryStore {
+        fn new() -> Self {
+            Self {
+                sessions: StdMutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl SessionStore for MemoryStore {
+        async fn create(&self, user_id: &str, meta: &SessionMeta) -> Result<SessionId, RskitError> {
+            let id = SessionId::new();
+            let token = generate_session_token();
+            let session = SessionData {
+                id: id.clone(),
+                token,
+                user_id: user_id.to_string(),
+                ip_address: meta.ip_address.clone(),
+                user_agent: meta.user_agent.clone(),
+                device_name: meta.device_name.clone(),
+                device_type: meta.device_type.clone(),
+                fingerprint: meta.fingerprint.clone(),
+                data: serde_json::json!({}),
+                created_at: chrono::Utc::now(),
+                last_active_at: chrono::Utc::now(),
+                expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+            };
+            self.sessions
+                .lock()
+                .unwrap()
+                .insert(id.as_str().to_string(), session);
+            Ok(id)
+        }
+
+        async fn create_with(
+            &self,
+            _user_id: &str,
+            _meta: &SessionMeta,
+            _data: serde_json::Value,
+        ) -> Result<SessionId, RskitError> {
+            unimplemented!()
+        }
+
+        async fn read(&self, id: &SessionId) -> Result<Option<SessionData>, RskitError> {
+            Ok(self.sessions.lock().unwrap().get(id.as_str()).cloned())
+        }
+
+        async fn touch(
+            &self,
+            _id: &SessionId,
+            _ttl: std::time::Duration,
+        ) -> Result<(), RskitError> {
+            Ok(())
+        }
+
+        async fn update_data(
+            &self,
+            _id: &SessionId,
+            _data: serde_json::Value,
+        ) -> Result<(), RskitError> {
+            Ok(())
+        }
+
+        async fn destroy(&self, id: &SessionId) -> Result<(), RskitError> {
+            self.sessions.lock().unwrap().remove(id.as_str());
+            Ok(())
+        }
+
+        async fn destroy_all_for_user(&self, user_id: &str) -> Result<(), RskitError> {
+            self.sessions
+                .lock()
+                .unwrap()
+                .retain(|_, s| s.user_id != user_id);
+            Ok(())
+        }
+
+        async fn read_by_token(&self, token: &str) -> Result<Option<SessionData>, RskitError> {
+            Ok(self
+                .sessions
+                .lock()
+                .unwrap()
+                .values()
+                .find(|s| s.token == token)
+                .cloned())
+        }
+
+        async fn update_token(&self, id: &SessionId, new_token: &str) -> Result<(), RskitError> {
+            if let Some(session) = self.sessions.lock().unwrap().get_mut(id.as_str()) {
+                session.token = new_token.to_string();
+            }
+            Ok(())
+        }
+
+        async fn destroy_all_except(
+            &self,
+            user_id: &str,
+            except_id: &SessionId,
+        ) -> Result<(), RskitError> {
+            self.sessions
+                .lock()
+                .unwrap()
+                .retain(|_, s| s.user_id != user_id || s.id == *except_id);
+            Ok(())
+        }
+    }
+
+    fn test_meta() -> SessionMeta {
+        SessionMeta {
+            ip_address: "127.0.0.1".to_string(),
+            user_agent: "test".to_string(),
+            device_name: "test".to_string(),
+            device_type: "test".to_string(),
+            fingerprint: "abc".to_string(),
+        }
+    }
+
+    fn make_manager(store: Arc<dyn SessionStoreDyn>) -> SessionManager {
+        SessionManager {
+            state: SessionManagerState {
+                action: Arc::new(Mutex::new(SessionAction::None)),
+                meta: test_meta(),
+                store,
+                current_session: None,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn logout_clears_current_session() {
+        let store = Arc::new(MemoryStore::new()) as Arc<dyn SessionStoreDyn>;
+        let mut mgr = make_manager(store);
+
+        mgr.authenticate("user1").await.unwrap();
+        assert!(mgr.current().is_some());
+
+        mgr.logout().await.unwrap();
+        assert!(
+            mgr.current().is_none(),
+            "current() should be None after logout"
+        );
+        assert!(
+            mgr.get::<String>("key").is_none(),
+            "get() should return None after logout"
+        );
+    }
+
+    #[tokio::test]
+    async fn logout_all_clears_current_session() {
+        let store = Arc::new(MemoryStore::new()) as Arc<dyn SessionStoreDyn>;
+        let mut mgr = make_manager(store);
+
+        mgr.authenticate("user1").await.unwrap();
+        assert!(mgr.current().is_some());
+
+        mgr.logout_all().await.unwrap();
+        assert!(
+            mgr.current().is_none(),
+            "current() should be None after logout_all"
+        );
+        assert!(
+            mgr.get::<String>("key").is_none(),
+            "get() should return None after logout_all"
+        );
+    }
+
+    #[tokio::test]
+    async fn logout_other_destroys_other_sessions() {
+        let store = Arc::new(MemoryStore::new()) as Arc<dyn SessionStoreDyn>;
+
+        // Create two sessions for the same user via two managers
+        let mut mgr1 = make_manager(store.clone());
+        mgr1.authenticate("user1").await.unwrap();
+        let session1_id = mgr1.current().unwrap().id.clone();
+
+        let mut mgr2 = make_manager(store.clone());
+        mgr2.authenticate("user1").await.unwrap();
+        let session2_id = mgr2.current().unwrap().id.clone();
+
+        assert_ne!(session1_id, session2_id);
+
+        // logout_other from mgr1 should keep session1, destroy session2
+        mgr1.logout_other().await.unwrap();
+
+        // session1 still readable
+        assert!(store.read(&session1_id).await.unwrap().is_some());
+        // session2 destroyed
+        assert!(store.read(&session2_id).await.unwrap().is_none());
+
+        // mgr1's current session is untouched
+        assert!(mgr1.current().is_some());
+    }
+
+    #[tokio::test]
+    async fn rotate_changes_token() {
+        let store = Arc::new(MemoryStore::new()) as Arc<dyn SessionStoreDyn>;
+        let mut mgr = make_manager(store);
+
+        mgr.authenticate("user1").await.unwrap();
+        let old_token = mgr.current().unwrap().token.clone();
+
+        mgr.rotate().await.unwrap();
+        let new_token = mgr.current().unwrap().token.clone();
+
+        assert_ne!(old_token, new_token, "token should change after rotate");
+        assert_eq!(new_token.len(), 64, "token should be 64 hex chars");
+
+        // SessionAction should be Set with the new token
+        let action = mgr.state.action.lock().unwrap().clone();
+        match action {
+            SessionAction::Set(t) => assert_eq!(t, new_token),
+            _ => panic!("expected SessionAction::Set after rotate"),
+        }
+    }
+
+    #[tokio::test]
+    async fn rotate_without_session_errors() {
+        let store = Arc::new(MemoryStore::new()) as Arc<dyn SessionStoreDyn>;
+        let mut mgr = make_manager(store);
+
+        let result = mgr.rotate().await;
+        assert!(result.is_err(), "rotate without session should error");
     }
 }

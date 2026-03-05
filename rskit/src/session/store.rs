@@ -45,6 +45,23 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
         user_id: &str,
     ) -> impl Future<Output = Result<(), RskitError>> + Send;
+
+    fn read_by_token(
+        &self,
+        token: &str,
+    ) -> impl Future<Output = Result<Option<SessionData>, RskitError>> + Send;
+
+    fn update_token(
+        &self,
+        id: &SessionId,
+        new_token: &str,
+    ) -> impl Future<Output = Result<(), RskitError>> + Send;
+
+    fn destroy_all_except(
+        &self,
+        user_id: &str,
+        except_id: &SessionId,
+    ) -> impl Future<Output = Result<(), RskitError>> + Send;
 }
 
 /// Object-safe, type-erased version of [`SessionStore`].
@@ -92,6 +109,23 @@ pub trait SessionStoreDyn: Send + Sync + 'static {
     fn destroy_all_for_user<'a>(
         &'a self,
         user_id: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
+
+    fn read_by_token<'a>(
+        &'a self,
+        token: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<SessionData>, RskitError>> + Send + 'a>>;
+
+    fn update_token<'a>(
+        &'a self,
+        id: &'a SessionId,
+        new_token: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
+
+    fn destroy_all_except<'a>(
+        &'a self,
+        user_id: &'a str,
+        except_id: &'a SessionId,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
 }
 
@@ -149,5 +183,28 @@ impl<T: SessionStore> SessionStoreDyn for T {
         user_id: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
         Box::pin(SessionStore::destroy_all_for_user(self, user_id))
+    }
+
+    fn read_by_token<'a>(
+        &'a self,
+        token: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<SessionData>, RskitError>> + Send + 'a>> {
+        Box::pin(SessionStore::read_by_token(self, token))
+    }
+
+    fn update_token<'a>(
+        &'a self,
+        id: &'a SessionId,
+        new_token: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
+        Box::pin(SessionStore::update_token(self, id, new_token))
+    }
+
+    fn destroy_all_except<'a>(
+        &'a self,
+        user_id: &'a str,
+        except_id: &'a SessionId,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
+        Box::pin(SessionStore::destroy_all_except(self, user_id, except_id))
     }
 }

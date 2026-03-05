@@ -10,4 +10,4 @@ pub(crate) use fingerprint::compute_fingerprint;
 pub use manager::SessionManager;
 pub use meta::SessionMeta;
 pub use store::{SessionStore, SessionStoreDyn};
-pub use types::{SessionData, SessionId};
+pub use types::{SessionData, SessionId, generate_session_token};

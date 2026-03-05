@@ -1,7 +1,7 @@
 use crate::app::AppState;
 use crate::config::Environment;
+use crate::session::SessionMeta;
 use crate::session::manager::{SessionAction, SessionManagerState};
-use crate::session::{SessionId, SessionMeta};
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -37,15 +37,13 @@ pub async fn session(
 
     let cookie_name = &state.config.session_cookie_name;
 
-    // Read session ID from encrypted cookie
-    let session_id = jar
-        .get(cookie_name)
-        .map(|c| SessionId::from(c.value().to_string()));
-    let had_cookie = session_id.is_some();
+    // Read session token from encrypted cookie
+    let session_token = jar.get(cookie_name).map(|c| c.value().to_string());
+    let had_cookie = session_token.is_some();
 
-    // Load session from store, filtering expired records
-    let current_session = if let Some(ref id) = session_id {
-        match session_store.read(id).await {
+    // Load session from store by token, filtering expired records
+    let current_session = if let Some(ref token) = session_token {
+        match session_store.read_by_token(token).await {
             Ok(session) => session.filter(|s| s.expires_at > Utc::now()),
             Err(e) => {
                 tracing::error!("Failed to read session: {e}");
@@ -108,8 +106,8 @@ pub async fn session(
     let session_action = action.lock().unwrap().clone();
 
     let jar = match session_action {
-        SessionAction::Set(id) => {
-            let mut cookie = Cookie::new(cookie_name.clone(), id.to_string());
+        SessionAction::Set(token) => {
+            let mut cookie = Cookie::new(cookie_name.clone(), token);
             cookie.set_http_only(true);
             cookie.set_same_site(cookie::SameSite::Lax);
             cookie.set_path("/");
@@ -127,11 +125,14 @@ pub async fn session(
         SessionAction::None => {
             // Touch session if interval elapsed, re-issue cookie with fresh max_age
             if should_touch && let Some(ref session) = current_session {
-                if let Err(e) = session_store.touch(&session.id, state.config.session_ttl).await {
+                if let Err(e) = session_store
+                    .touch(&session.id, state.config.session_ttl)
+                    .await
+                {
                     tracing::error!("Failed to touch session: {e}");
                 } else {
                     // Re-issue cookie with fresh max_age so it doesn't expire
-                    let mut cookie = Cookie::new(cookie_name.clone(), session.id.to_string());
+                    let mut cookie = Cookie::new(cookie_name.clone(), session.token.clone());
                     cookie.set_http_only(true);
                     cookie.set_same_site(cookie::SameSite::Lax);
                     cookie.set_path("/");

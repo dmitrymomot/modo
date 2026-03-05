@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -39,6 +40,7 @@ impl From<String> for SessionId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
     pub id: SessionId,
+    pub token: String,
     pub user_id: String,
     pub ip_address: String,
     pub user_agent: String,
@@ -49,6 +51,16 @@ pub struct SessionData {
     pub created_at: DateTime<Utc>,
     pub last_active_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
+}
+
+/// Generate a cryptographically random session token (32 bytes, hex-encoded, 64 chars).
+pub fn generate_session_token() -> String {
+    let bytes: [u8; 32] = rand::rng().random();
+    let mut s = String::with_capacity(64);
+    for b in bytes {
+        std::fmt::Write::write_fmt(&mut s, format_args!("{b:02x}")).unwrap();
+    }
+    s
 }
 
 #[cfg(test)]
