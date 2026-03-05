@@ -19,6 +19,8 @@ pub struct AppState {
     pub config: AppConfig,
     pub cookie_key: Key,
     pub session_store: Option<Arc<dyn SessionStoreDyn>>,
+    #[cfg(feature = "jobs")]
+    pub job_queue: Option<crate::jobs::JobQueue>,
 }
 
 impl FromRef<AppState> for Key {
@@ -138,14 +140,70 @@ impl AppBuilder {
             info!("Session store registered");
         }
 
+        let mut services = self.services;
+
+        // --- Job queue setup ---
+        #[cfg(feature = "jobs")]
+        let job_queue = {
+            use crate::jobs::JobQueue;
+            use crate::jobs::handler::JobRegistration;
+            use crate::jobs::store::SqliteJobStore;
+            use std::collections::HashSet;
+
+            let has_registrations = inventory::iter::<JobRegistration>
+                .into_iter()
+                .next()
+                .is_some();
+
+            if let Some(ref db_conn) = db {
+                if has_registrations {
+                    // Check for duplicate handler names
+                    let mut seen = HashSet::new();
+                    for reg in inventory::iter::<JobRegistration> {
+                        if !seen.insert(reg.name) {
+                            panic!(
+                                "Duplicate job handler name: '{}'. Each #[job] must have a unique function name.",
+                                reg.name
+                            );
+                        }
+                    }
+
+                    let store = Arc::new(SqliteJobStore::new(db_conn.clone()));
+                    if let Err(e) = store.setup().await {
+                        panic!("Failed to setup modo_jobs table: {e}");
+                    }
+                    info!("Job queue initialized (modo_jobs table synced)");
+
+                    let queue = JobQueue::new(store);
+                    JobQueue::set_global(queue.clone());
+
+                    // Register as a service for Service<JobQueue> extraction
+                    services.insert(TypeId::of::<JobQueue>(), Arc::new(queue.clone()));
+
+                    Some(queue)
+                } else {
+                    None
+                }
+            } else {
+                if has_registrations {
+                    warn!(
+                        "Job handlers registered but no database configured — job queue disabled"
+                    );
+                }
+                None
+            }
+        };
+
         let state = AppState {
             db,
             services: ServiceRegistry {
-                services: Arc::new(self.services),
+                services: Arc::new(services),
             },
             config: self.config.clone(),
             cookie_key,
             session_store,
+            #[cfg(feature = "jobs")]
+            job_queue,
         };
 
         // Collect module registrations into a lookup by name
@@ -211,7 +269,38 @@ impl AppBuilder {
             router = layer_fn(router);
         }
 
-        let app = router.with_state(state);
+        let app = router.with_state(state.clone());
+
+        // --- Start job runner + cron scheduler ---
+        #[cfg(feature = "jobs")]
+        let (job_cancel, _cron_scheduler) = {
+            use crate::jobs::cron::CronScheduler;
+            use crate::jobs::runner::JobRunner;
+            use tokio_util::sync::CancellationToken;
+
+            let cancel = CancellationToken::new();
+
+            if let Some(ref queue) = state.job_queue {
+                let runner = JobRunner::new(
+                    queue.store.clone(),
+                    self.config.job_poll_interval,
+                    self.config.job_concurrency,
+                    cancel.clone(),
+                    state.clone(),
+                );
+                tokio::spawn(runner.run());
+                info!(
+                    "Job runner started (poll={}ms, concurrency={})",
+                    self.config.job_poll_interval.as_millis(),
+                    self.config.job_concurrency,
+                );
+            }
+
+            // Start cron scheduler (works even without DB for cron jobs that don't need it)
+            let cron = CronScheduler::start(cancel.clone(), state.clone());
+
+            (cancel, cron)
+        };
 
         let listener = TcpListener::bind(&self.config.bind_address).await?;
         info!("Listening on {}", self.config.bind_address);
@@ -222,6 +311,15 @@ impl AppBuilder {
         )
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+        // --- Shutdown: cancel job runner + cron ---
+        #[cfg(feature = "jobs")]
+        {
+            job_cancel.cancel();
+            _cron_scheduler.abort();
+            // Give runner time to drain
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
 
         info!("Server shut down gracefully");
         Ok(())
