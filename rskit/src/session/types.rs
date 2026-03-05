@@ -53,7 +53,7 @@ impl SessionToken {
     }
 
     /// Wrap a raw token string (from cookie value).
-    pub fn from_raw(s: String) -> Self {
+    pub(crate) fn from_raw(s: String) -> Self {
         Self(s)
     }
 

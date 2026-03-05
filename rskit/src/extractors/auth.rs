@@ -159,8 +159,13 @@ where
                     user_id = session.user_id.as_str(),
                     "Session references nonexistent user"
                 );
-                if let Some(ref store) = state.session_store {
-                    let _ = store.destroy(&session.id).await;
+                if let Some(ref store) = state.session_store
+                    && let Err(e) = store.destroy(&session.id).await
+                {
+                    tracing::error!(
+                        session_id = session.id.as_str(),
+                        "Failed to destroy stale session: {e}"
+                    );
                 }
                 return Err(RskitError::Unauthorized);
             }
@@ -195,13 +200,23 @@ where
             Ok(Some(user)) => Ok(OptionalAuth(Some(AuthData { user, session }))),
             Ok(None) => {
                 // Stale session referencing deleted user — clean up like Auth does
-                if let Some(ref store) = state.session_store {
-                    let _ = store.destroy(&session.id).await;
+                if let Some(ref store) = state.session_store
+                    && let Err(e) = store.destroy(&session.id).await
+                {
+                    tracing::error!(
+                        session_id = session.id.as_str(),
+                        "Failed to destroy stale session: {e}"
+                    );
                 }
                 Ok(OptionalAuth(None))
             }
             Err(e) => {
-                tracing::warn!(error = %e, "Failed to load user from session");
+                tracing::error!(
+                    session_id = session.id.as_str(),
+                    user_id = session.user_id.as_str(),
+                    error = %e,
+                    "Failed to load user from session — treating as unauthenticated"
+                );
                 Ok(OptionalAuth(None))
             }
         }

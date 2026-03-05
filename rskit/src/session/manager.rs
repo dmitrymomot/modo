@@ -162,7 +162,11 @@ impl SessionManager {
             .await?;
         *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
             SessionAction::Set(new_token.clone());
-        self.state.current_session.as_mut().unwrap().token = new_token;
+        self.state
+            .current_session
+            .as_mut()
+            .expect("checked above")
+            .token = new_token;
         Ok(())
     }
 
@@ -187,7 +191,11 @@ impl SessionManager {
             .store
             .update_data(&session.id, data.clone())
             .await?;
-        self.state.current_session.as_mut().unwrap().data = data;
+        self.state
+            .current_session
+            .as_mut()
+            .expect("checked above")
+            .data = data;
         Ok(())
     }
 
@@ -197,7 +205,13 @@ impl SessionManager {
             .current_session
             .as_ref()
             .and_then(|s| s.data.get(key))
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .and_then(|v| {
+                serde_json::from_value(v.clone())
+                    .map_err(|e| {
+                        tracing::debug!(key, error = %e, "Failed to deserialize session data key");
+                    })
+                    .ok()
+            })
     }
 
     /// Set a single key in the session data (read-modify-write via store).
@@ -223,7 +237,11 @@ impl SessionManager {
             .store
             .update_data(&session.id, data.clone())
             .await?;
-        self.state.current_session.as_mut().unwrap().data = data;
+        self.state
+            .current_session
+            .as_mut()
+            .expect("checked above")
+            .data = data;
         Ok(())
     }
 
@@ -246,7 +264,11 @@ impl SessionManager {
             .store
             .update_data(&session.id, data.clone())
             .await?;
-        self.state.current_session.as_mut().unwrap().data = data;
+        self.state
+            .current_session
+            .as_mut()
+            .expect("checked above")
+            .data = data;
         Ok(())
     }
 }

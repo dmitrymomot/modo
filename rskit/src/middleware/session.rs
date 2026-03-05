@@ -151,7 +151,7 @@ pub async fn session(
                 }
             }
 
-            // Remove stale cookie if session_id was in cookie but session not found
+            // Remove stale cookie if session token was in cookie but session not found
             if had_cookie && current_session.is_none() {
                 let mut c = Cookie::new(cookie_name.clone(), "");
                 c.set_path("/");
