@@ -65,28 +65,6 @@ impl SessionMeta {
             fingerprint,
         }
     }
-
-    /// Build SessionMeta directly from headers (no ConnectInfo, no trusted proxy check).
-    ///
-    /// Retained for backwards compatibility in tests. Prefers proxy headers unconditionally.
-    pub fn from_headers(headers: &HeaderMap) -> Self {
-        let ip_address = extract_ip(headers, None, &[]);
-        let user_agent = header_value(headers, "user-agent");
-        let accept_language = header_value(headers, "accept-language");
-        let accept_encoding = header_value(headers, "accept-encoding");
-
-        let device_name = parse_device_name(&user_agent);
-        let device_type = parse_device_type(&user_agent);
-        let fingerprint = compute_fingerprint(&user_agent, &accept_language, &accept_encoding);
-
-        Self {
-            ip_address,
-            user_agent,
-            device_name,
-            device_type,
-            fingerprint,
-        }
-    }
 }
 
 fn header_value(headers: &HeaderMap, name: &str) -> String {
@@ -213,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn session_meta_from_headers() {
+    fn session_meta_from_request_data() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "10.0.0.1".parse().unwrap());
         headers.insert(
@@ -225,7 +203,9 @@ mod tests {
         headers.insert("accept-language", "en-US".parse().unwrap());
         headers.insert("accept-encoding", "gzip".parse().unwrap());
 
-        let meta = SessionMeta::from_headers(&headers);
+        let extensions = axum::http::Extensions::default();
+        let config = crate::config::AppConfig::default();
+        let meta = SessionMeta::from_request_data(&extensions, &headers, &config);
         assert_eq!(meta.ip_address, "10.0.0.1");
         assert_eq!(meta.device_name, "Chrome on macOS");
         assert_eq!(meta.device_type, "desktop");

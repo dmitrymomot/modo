@@ -50,6 +50,9 @@ pub trait SessionStore: Send + Sync + 'static {
 /// This trait exists so we can store the session store as `Arc<dyn SessionStoreDyn>`
 /// inside [`AppState`](crate::app::AppState). You should not need to implement this
 /// directly; a blanket impl covers all `T: SessionStore`.
+///
+/// Only includes methods used by the session middleware and `SessionManager`.
+/// For `update_data` and `cleanup_expired`, use the concrete store via `Service<MyStore>`.
 pub trait SessionStoreDyn: Send + Sync + 'static {
     fn create<'a>(
         &'a self,
@@ -74,12 +77,6 @@ pub trait SessionStoreDyn: Send + Sync + 'static {
         id: &'a SessionId,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
 
-    fn update_data<'a>(
-        &'a self,
-        id: &'a SessionId,
-        data: serde_json::Value,
-    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
-
     fn destroy<'a>(
         &'a self,
         id: &'a SessionId,
@@ -89,10 +86,6 @@ pub trait SessionStoreDyn: Send + Sync + 'static {
         &'a self,
         user_id: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
-
-    fn cleanup_expired<'a>(
-        &'a self,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, RskitError>> + Send + 'a>>;
 }
 
 /// Blanket impl: any `SessionStore` automatically implements `SessionStoreDyn`.
@@ -128,14 +121,6 @@ impl<T: SessionStore> SessionStoreDyn for T {
         Box::pin(SessionStore::touch(self, id))
     }
 
-    fn update_data<'a>(
-        &'a self,
-        id: &'a SessionId,
-        data: serde_json::Value,
-    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
-        Box::pin(SessionStore::update_data(self, id, data))
-    }
-
     fn destroy<'a>(
         &'a self,
         id: &'a SessionId,
@@ -148,11 +133,5 @@ impl<T: SessionStore> SessionStoreDyn for T {
         user_id: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
         Box::pin(SessionStore::destroy_all_for_user(self, user_id))
-    }
-
-    fn cleanup_expired<'a>(
-        &'a self,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, RskitError>> + Send + 'a>> {
-        Box::pin(SessionStore::cleanup_expired(self))
     }
 }

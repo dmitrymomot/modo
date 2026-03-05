@@ -44,9 +44,10 @@ Rust web framework for micro-SaaS. Single binary, SQLite-only, maximum compile-t
 - Middleware: plain async functions, attached via `#[middleware(fn_name(params))]`
 - Middleware stacking order: Global (outermost) → Module → Handler (innermost)
 - Services: manually constructed, registered via `.service(instance)`
-- Sessions: `app.sessions()` to enable, `SessionMeta` + `SessionCookie` in handlers
+- Sessions: `app.session_store(my_store)` to register, `SessionManager` in handlers
+- SessionManager: `authenticate()` / `logout()` / `logout_all()` — handles cookies automatically
 - Auth: implement `UserProvider` trait, use `Auth<User>` / `OptionalAuth<User>` extractors
-- Template context: `#[rskit::context]` with `#[base]` + `#[auth]` fields
+- Template context: `#[rskit::context]` with `#[base]` + `#[user]` + `#[session]` fields
 - BaseContext: includes request_id, is_htmx, current_url, flash_messages, csrf_token, locale
 
 ## Key Decisions
