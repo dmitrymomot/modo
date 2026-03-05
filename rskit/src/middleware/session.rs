@@ -1,7 +1,7 @@
 use crate::app::AppState;
 use crate::config::Environment;
-use crate::session::SessionMeta;
 use crate::session::manager::{SessionAction, SessionManagerState};
+use crate::session::{SessionMeta, SessionToken};
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 /// Session middleware — manages session lifecycle via encrypted cookies.
 ///
 /// **Request path:**
-/// 1. Read session ID from PrivateCookieJar
+/// 1. Read session token from PrivateCookieJar
 /// 2. Load session from store (if cookie exists)
 /// 3. Validate fingerprint (if session loaded + enabled)
 /// 4. Build `SessionManagerState` with shared action
@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// **Response path:**
 /// 1. Read `SessionAction` from shared state
-/// 2. `Set(id)` → add session cookie
+/// 2. `Set(token)` → add session cookie
 /// 3. `Remove` → remove session cookie
 /// 4. `None` → touch if interval elapsed; remove stale cookie if needed
 pub async fn session(
@@ -38,7 +38,9 @@ pub async fn session(
     let cookie_name = &state.config.session_cookie_name;
 
     // Read session token from encrypted cookie
-    let session_token = jar.get(cookie_name).map(|c| c.value().to_string());
+    let session_token = jar
+        .get(cookie_name)
+        .map(|c| SessionToken::from_raw(c.value().to_string()));
     let had_cookie = session_token.is_some();
 
     // Load session from store by token, filtering expired records
@@ -66,7 +68,12 @@ pub async fn session(
                 user_id = session.user_id,
                 "Session fingerprint mismatch — possible hijack, destroying session"
             );
-            let _ = session_store.destroy(&session.id).await;
+            if let Err(e) = session_store.destroy(&session.id).await {
+                tracing::error!(
+                    session_id = session.id.as_str(),
+                    "Failed to destroy hijacked session: {e}"
+                );
+            }
             None
         } else {
             Some(session)
@@ -103,11 +110,11 @@ pub async fn session(
     let response = next.run(request).await;
 
     // Response path: apply session action
-    let session_action = action.lock().unwrap().clone();
+    let session_action = action.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     let jar = match session_action {
         SessionAction::Set(token) => {
-            let mut cookie = Cookie::new(cookie_name.clone(), token);
+            let mut cookie = Cookie::new(cookie_name.clone(), token.to_string());
             cookie.set_http_only(true);
             cookie.set_same_site(cookie::SameSite::Lax);
             cookie.set_path("/");
@@ -132,7 +139,7 @@ pub async fn session(
                     tracing::error!("Failed to touch session: {e}");
                 } else {
                     // Re-issue cookie with fresh max_age so it doesn't expire
-                    let mut cookie = Cookie::new(cookie_name.clone(), session.token.clone());
+                    let mut cookie = Cookie::new(cookie_name.clone(), session.token.to_string());
                     cookie.set_http_only(true);
                     cookie.set_same_site(cookie::SameSite::Lax);
                     cookie.set_path("/");

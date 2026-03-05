@@ -64,6 +64,7 @@ Rust web framework for micro-SaaS. Single binary, SQLite-only, maximum compile-t
 - Use official documentation only when researching dependencies
 - Session IDs: ULID (no UUID anywhere)
 - Session cookies: PrivateCookieJar (AES-encrypted), store token (not session ID); token is rotatable
+- `SessionToken` newtype for cookie tokens (mirrors `SessionId`); use `SessionToken::generate()` not free functions
 - Session fingerprint: SHA256(user_agent + accept_language + accept_encoding), configurable validation
 - Session touch: only updates last_active_at when touch_interval elapses (default 5min)
 - Session fingerprint uses `\x00` separator between hash inputs to prevent ambiguity

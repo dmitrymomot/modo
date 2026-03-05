@@ -1,5 +1,5 @@
 use crate::error::RskitError;
-use crate::session::{SessionData, SessionId, SessionMeta};
+use crate::session::{SessionData, SessionId, SessionMeta, SessionToken};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -48,13 +48,13 @@ pub trait SessionStore: Send + Sync + 'static {
 
     fn read_by_token(
         &self,
-        token: &str,
+        token: &SessionToken,
     ) -> impl Future<Output = Result<Option<SessionData>, RskitError>> + Send;
 
     fn update_token(
         &self,
         id: &SessionId,
-        new_token: &str,
+        new_token: &SessionToken,
     ) -> impl Future<Output = Result<(), RskitError>> + Send;
 
     fn destroy_all_except(
@@ -113,13 +113,13 @@ pub trait SessionStoreDyn: Send + Sync + 'static {
 
     fn read_by_token<'a>(
         &'a self,
-        token: &'a str,
+        token: &'a SessionToken,
     ) -> Pin<Box<dyn Future<Output = Result<Option<SessionData>, RskitError>> + Send + 'a>>;
 
     fn update_token<'a>(
         &'a self,
         id: &'a SessionId,
-        new_token: &'a str,
+        new_token: &'a SessionToken,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
 
     fn destroy_all_except<'a>(
@@ -187,7 +187,7 @@ impl<T: SessionStore> SessionStoreDyn for T {
 
     fn read_by_token<'a>(
         &'a self,
-        token: &'a str,
+        token: &'a SessionToken,
     ) -> Pin<Box<dyn Future<Output = Result<Option<SessionData>, RskitError>> + Send + 'a>> {
         Box::pin(SessionStore::read_by_token(self, token))
     }
@@ -195,7 +195,7 @@ impl<T: SessionStore> SessionStoreDyn for T {
     fn update_token<'a>(
         &'a self,
         id: &'a SessionId,
-        new_token: &'a str,
+        new_token: &'a SessionToken,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
         Box::pin(SessionStore::update_token(self, id, new_token))
     }
