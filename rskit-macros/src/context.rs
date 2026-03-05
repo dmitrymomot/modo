@@ -114,7 +114,8 @@ pub fn expand(_attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         quote! {
             let #user_name = match rskit::extractors::auth::OptionalAuth::<#inner_ty>::from_request_parts(parts, state).await {
                 Ok(rskit::extractors::auth::OptionalAuth(Some(auth_data))) => Some(auth_data.user),
-                _ => None,
+                Ok(rskit::extractors::auth::OptionalAuth(None)) => None,
+                Err(never) => match never {},
             };
         }
     } else {
