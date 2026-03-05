@@ -43,7 +43,7 @@ modo/
       extractors/
         mod.rs
         db.rs               # Db extractor
-        tenant_db.rs        # TenantDb extractor
+        tenant.rs           # TenantId, TenantResolver, TenantScoped
         auth.rs             # Auth<User>, OptionalAuth<User>
         service.rs          # Service<T> extractor
         htmx.rs             # HtmxRequest extractor
@@ -54,8 +54,7 @@ modo/
         migrations.rs       # Migration runner, auto-sync
         transaction.rs      # Transaction helpers
       tenancy/
-        mod.rs              # TenantStrategy enum, TenantResolver trait
-        per_database.rs     # PerDatabase LRU pool manager
+        mod.rs              # TenantResolver trait, TenantScoped extension
         shared.rs           # SharedDatabase tenant_id scoping
       auth/
         mod.rs              # Traits: Authenticator, SessionStore, UserProvider
@@ -107,8 +106,7 @@ templates = ["dep:askama"]
 jobs = []
 sessions = []
 db = ["dep:sea-orm"]
-tenancy-per-db = ["db"]
-tenancy-shared = ["db"]
+tenancy = ["db"]
 email = ["dep:lettre", "templates", "jobs"]
 sse = []
 webhooks = ["jobs"]
@@ -154,7 +152,7 @@ impl AppBuilder {
 
 1. `#[modo::main]` expands, collects all auto-discovered routes/jobs/modules via `inventory`
 2. User calls `.service()`, `.layer()`, etc.
-3. `.run()`: init DB (WAL mode) -> run migrations -> build Router from inventory -> apply middleware -> start job workers -> execute startup hooks -> serve with graceful shutdown
+3. `.run()`: init DB (WAL mode) -> schema sync (framework + user entities) -> run pending migrations -> build Router from inventory -> apply middleware -> start job workers -> execute startup hooks -> serve with graceful shutdown
 
 ### Configuration
 
@@ -312,7 +310,6 @@ pub struct AppState {
     pub services: ServiceRegistry,
     pub job_queue: JobQueue,
     pub config: AppConfig,
-    pub tenant_pool: Option<Arc<dyn TenantPoolManager>>,
     pub session_store: Option<Arc<dyn SessionStore>>,
 }
 ```
@@ -351,26 +348,26 @@ where F: FnOnce(DatabaseTransaction) -> Fut, Fut: Future<Output = Result<T>>
 }
 ```
 
-### Migrations
+### Migrations — Entity-First with Auto-Sync
 
-SeaORM v2 auto-sync in development, explicit migrations in production.
+**Full design:** `docs/plans/2026-03-05-entity-first-migrations-design.md`
+
+**Approach:** Entity-first — define Rust structs with `#[modo::entity]`, framework auto-syncs schema on startup. Hybrid escape hatches via `#[modo::migration]` for destructive changes and data migrations.
+
+**Key points:**
+- `#[modo::entity]` replaces `DeriveEntityModel` — generates SeaORM derives, relations, indices, and `inventory` registration in one macro
+- Extended attributes beyond SeaORM: `on_delete`, `on_update`, composite `index(columns = [...])`, `renamed_from`
+- SeaORM v2 `schema-sync` runs on every startup (all environments) — addition-only, never drops tables/columns
+- Framework entities (`_modo_sessions`, `_modo_jobs`, etc.) merge with user entities in a single sync pass
+- Framework tables are `pub` and queryable but framework-owned
+- `#[modo::migration(version = N)]` for data migrations, auto-discovered via `inventory`
+- Migration history tracked in `_modo_migrations` table
 
 ---
 
-## 7. Multi-Tenancy
+## 7. Multi-Tenancy (Shared Database)
 
-Both strategies, user chooses:
-
-```rust
-pub enum TenantStrategy {
-    PerDatabase {
-        data_dir: PathBuf,
-        max_cached_connections: usize,
-        sharded_dirs: bool,           // /ab/cd/tenant_id.db
-    },
-    SharedDatabase,
-}
-```
+Shared-database strategy only. Per-database tenancy (LRU pool of separate SQLite files) deferred to Phase 5 as an advanced module.
 
 ### Tenant Resolution
 
@@ -381,22 +378,17 @@ pub trait TenantResolver: Send + Sync + 'static {
 // Built-in: SubdomainResolver, PathPrefixResolver, HeaderResolver, UserTenantResolver
 ```
 
-### PerDatabase Pool Manager
-
-LRU cache of `DatabaseConnection`. When at capacity, evicts least-recently-used. Lazy migration on first connect per tenant. Sharded directory structure optional (`/ab/cd/abcdef.db`).
-
 ### SharedDatabase Scoping
 
-Extension trait `TenantScoped` auto-adds `WHERE tenant_id = ?` to SeaORM queries.
+Extension trait `TenantScoped` auto-adds `WHERE tenant_id = ?` to SeaORM queries. Tenant ID injected into request extensions by middleware, accessible via `TenantId` extractor.
 
-### TenantDb Extractor
+### TenantId Extractor
 
 ```rust
-pub struct TenantDb(pub DatabaseConnection);
-// Resolves tenant from request, gets correct DB connection. Handlers don't know about tenancy.
+pub struct TenantId(pub String);
+// Extracted from request extensions (set by tenant resolution middleware).
+// Handlers use this to scope queries via TenantScoped trait.
 ```
-
-System DB always accessible via `SystemDb` extractor for tenant registry, jobs, global config.
 
 ---
 
@@ -638,48 +630,49 @@ Features: in-memory SQLite, fake auth, request builders, CSS selector assertions
 
 ## 14. Implementation Phases
 
-### Phase 1: Foundation
+### Phase 1: Foundation — COMPLETE
 
-- `modo-macros`: `#[handler]`, `#[modo::main]`
-- `inventory`-based auto-discovery
-- `AppBuilder` with config, graceful shutdown
-- `Db` extractor, SeaORM v2 + SQLite + WAL mode
-- `Error` with content negotiation
-- `Service<T>` extractor
+- ~~`modo-macros`: `#[handler]`, `#[modo::main]`~~
+- ~~`inventory`-based auto-discovery~~
+- ~~`AppBuilder` with config, graceful shutdown~~
+- ~~`Db` extractor, SeaORM v2 + SQLite + WAL mode~~
+- ~~`Error` with content negotiation~~
+- ~~`Service<T>` extractor~~
 
-**Milestone:** `#[handler(GET, "/")] async fn index() -> &'static str { "Hello modo" }` works with `#[modo::main]`.
+**Milestone:** Achieved. `#[handler(GET, "/")] async fn index() -> &'static str { "Hello modo" }` works with `#[modo::main]`.
 
-### Phase 2: Auth, Sessions, Templates
+### Phase 2: Auth, Sessions, Templates — COMPLETE
 
-- `SqliteSessionStore`, auth traits + default impls
-- `Auth<User>`, `OptionalAuth<User>` extractors
-- Askama + `BaseContext` + HTMX auto-detection
-- Flash messages, CSRF middleware
-- `#[middleware]` and `#[module]` macros
+- ~~`SqliteSessionStore` with `SessionManager`, fingerprinting, token rotation, touch interval~~
+- ~~`Auth<User>`, `OptionalAuth<User>` extractors, `UserProvider` trait~~
+- ~~Askama + `BaseContext` + HTMX auto-detection~~
+- ~~Flash messages (cookie-based), CSRF middleware (double-submit signed cookie)~~
+- ~~`#[middleware]`, `#[module]`, `#[context]` macros~~
 
-**Milestone:** Login/register flow with HTMX partial rendering and CSRF protection.
+**Milestone:** Achieved. Login/register flow with HTMX partial rendering and CSRF protection.
 
-### Phase 3: Jobs, Multi-Tenancy
+### Phase 3: Jobs, Entity-First Migrations — IN PROGRESS
 
-- SQLite job queue: schema, polling, retries, cron, dedup, transactional enqueue
-- `#[job]` macro
-- `TenantStrategy::PerDatabase` + `TenantStrategy::SharedDatabase`
-- `TenantDb` extractor, tenant resolver
-- Cross-tenant migration runner
+- ~~SQLite job queue: schema, polling, retries, cron, dedup, transactional enqueue~~ ✅
+- ~~`#[job]` macro~~ ✅
+- Entity-first migrations: **NOT STARTED** — design doc at `docs/plans/2026-03-05-entity-first-migrations-design.md`; pending items: `#[modo::entity]` macro, `EntityRegistration`, schema-sync on startup, `#[modo::migration]` escape hatch
+- Multi-tenancy: **DEFERRED** to Phase 5
 
-**Milestone:** Job enqueued in a transaction executes after commit. Tenant switching works with config change.
+**Milestone:** Jobs complete. Entity-first migration system is next.
 
-### Phase 4: Email, Testing, DX
+### Phase 4: Email, Testing, DX — NOT STARTED
 
 - Mailer + Askama-templated emails + queue via jobs
 - `TestApp` builder, fake auth, request builders, HTML assertions
-- `#[derive(Entity)]` wrapper, `Validated<T>` extractor
+- `Validated<T>` extractor
 - Rate limiting middleware
 
 **Milestone:** Full integration test with auth, templates, jobs, and email in one test.
 
-### Phase 5: Advanced Modules
+### Phase 5: Advanced Modules — NOT STARTED
 
+- Shared-database multi-tenancy: `TenantResolver` trait, `TenantId` extractor, `TenantScoped` query extension, tenant resolution middleware
+- Per-database multi-tenancy (LRU connection pool, sharded dirs, cross-tenant migrations)
 - SSE, webhooks, file storage, i18n, JWT, TOTP, OAuth client, HTML sanitization
 - Documentation and example apps
 - Optional CLI scaffolding tool
@@ -741,7 +734,7 @@ scraper = "0.21"         # test HTML assertions
 | Job queue         | Custom over Apalis            | Tighter transactional enqueue + multi-tenancy integration         |
 | Middleware model  | Plain async functions         | Much simpler than Tower Layer+Service for 90% case                |
 | Error handling    | Derive macro with `#[status]` | Declarative, auto content negotiation                             |
-| Multi-tenant pool | LRU cache with lazy init      | SQLite connections cheap; LRU bounds memory                       |
+| Multi-tenancy     | Shared-DB first, per-DB later | Simpler to operate/backup; per-DB deferred to Phase 5             |
 | Template context  | `BaseContext` extractor       | Auto HTMX/flash/CSRF injection                                    |
 | Session backend   | SQLite only                   | Single-binary philosophy                                          |
 | Test approach     | In-memory SQLite              | Fast, isolated, real DB behavior                                  |
