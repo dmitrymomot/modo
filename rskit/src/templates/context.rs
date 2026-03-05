@@ -23,7 +23,7 @@ impl FromRequestParts<AppState> for BaseContext {
         // request_id: prefer X-Request-Id header, fallback to generated ULID
         let request_id = parts
             .headers
-            .get("X-Request-Id")
+            .get("x-request-id")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string())
             .unwrap_or_else(|| ulid::Ulid::new().to_string());

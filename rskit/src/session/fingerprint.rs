@@ -9,7 +9,9 @@ pub fn compute_fingerprint(
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(user_agent.as_bytes());
+    hasher.update(b"\x00");
     hasher.update(accept_language.as_bytes());
+    hasher.update(b"\x00");
     hasher.update(accept_encoding.as_bytes());
     hex_encode::encode(hasher.finalize())
 }
@@ -51,5 +53,13 @@ mod tests {
         let fp = compute_fingerprint("test", "en", "gzip");
         assert_eq!(fp.len(), 64); // SHA256 = 32 bytes = 64 hex chars
         assert!(fp.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn fingerprint_separator_prevents_collision() {
+        // Without a separator, ("ab", "cd", "ef") and ("abc", "de", "f") would hash identically
+        let a = compute_fingerprint("ab", "cd", "ef");
+        let b = compute_fingerprint("abc", "de", "f");
+        assert_ne!(a, b);
     }
 }

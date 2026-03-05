@@ -5,6 +5,8 @@ use crate::session::store::SessionStoreDyn;
 use crate::session::types::{SessionData, SessionId};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -51,7 +53,8 @@ impl SessionManager {
         }
 
         let session_id = self.state.store.create(user_id, &self.state.meta).await?;
-        *self.state.action.lock().unwrap() = SessionAction::Set(session_id);
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
+            SessionAction::Set(session_id);
         Ok(())
     }
 
@@ -72,7 +75,8 @@ impl SessionManager {
             .store
             .create_with(user_id, &self.state.meta, data)
             .await?;
-        *self.state.action.lock().unwrap() = SessionAction::Set(session_id);
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) =
+            SessionAction::Set(session_id);
         Ok(())
     }
 
@@ -83,7 +87,7 @@ impl SessionManager {
         if let Some(ref session) = self.state.current_session {
             self.state.store.destroy(&session.id).await?;
         }
-        *self.state.action.lock().unwrap() = SessionAction::Remove;
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) = SessionAction::Remove;
         Ok(())
     }
 
@@ -97,13 +101,71 @@ impl SessionManager {
                 .destroy_all_for_user(&session.user_id)
                 .await?;
         }
-        *self.state.action.lock().unwrap() = SessionAction::Remove;
+        *self.state.action.lock().unwrap_or_else(|e| e.into_inner()) = SessionAction::Remove;
         Ok(())
     }
 
     /// Access the current session data (if authenticated).
     pub fn current(&self) -> Option<&SessionData> {
         self.state.current_session.as_ref()
+    }
+
+    /// Read the current session's data field.
+    pub fn data(&self) -> Option<&serde_json::Value> {
+        self.state.current_session.as_ref().map(|s| &s.data)
+    }
+
+    /// Replace the entire data blob for the current session.
+    pub async fn update_data(&self, data: serde_json::Value) -> Result<(), RskitError> {
+        let session = self
+            .state
+            .current_session
+            .as_ref()
+            .ok_or_else(|| RskitError::internal("no active session"))?;
+        self.state.store.update_data(&session.id, data).await
+    }
+
+    /// Get a typed value from the session data by key.
+    pub fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
+        self.state
+            .current_session
+            .as_ref()
+            .and_then(|s| s.data.get(key))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+    }
+
+    /// Set a single key in the session data (read-modify-write via store).
+    pub async fn set(&self, key: &str, value: impl Serialize) -> Result<(), RskitError> {
+        let session = self
+            .state
+            .current_session
+            .as_ref()
+            .ok_or_else(|| RskitError::internal("no active session"))?;
+
+        let mut data = session.data.clone();
+        if let serde_json::Value::Object(ref mut map) = data {
+            map.insert(
+                key.to_string(),
+                serde_json::to_value(value)
+                    .map_err(|e| RskitError::internal(format!("serialize session value: {e}")))?,
+            );
+        }
+        self.state.store.update_data(&session.id, data).await
+    }
+
+    /// Remove a key from the session data.
+    pub async fn remove_key(&self, key: &str) -> Result<(), RskitError> {
+        let session = self
+            .state
+            .current_session
+            .as_ref()
+            .ok_or_else(|| RskitError::internal("no active session"))?;
+
+        let mut data = session.data.clone();
+        if let serde_json::Value::Object(ref mut map) = data {
+            map.remove(key);
+        }
+        self.state.store.update_data(&session.id, data).await
     }
 }
 

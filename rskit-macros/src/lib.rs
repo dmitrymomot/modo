@@ -30,7 +30,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Derive macro for typed template context with `#[base]` and `#[auth]` fields.
+/// Derive macro for typed template context with `#[base]`, `#[user]`, and `#[session]` fields.
 #[proc_macro_attribute]
 pub fn context(attr: TokenStream, item: TokenStream) -> TokenStream {
     context::expand(attr.into(), item.into())

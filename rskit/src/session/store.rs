@@ -1,6 +1,5 @@
 use crate::error::RskitError;
 use crate::session::{SessionData, SessionId, SessionMeta};
-use serde::Serialize;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -15,11 +14,11 @@ pub trait SessionStore: Send + Sync + 'static {
         meta: &SessionMeta,
     ) -> impl Future<Output = Result<SessionId, RskitError>> + Send;
 
-    fn create_with<T: Serialize + Send>(
+    fn create_with(
         &self,
         user_id: &str,
         meta: &SessionMeta,
-        data: T,
+        data: serde_json::Value,
     ) -> impl Future<Output = Result<SessionId, RskitError>> + Send;
 
     fn read(
@@ -41,8 +40,6 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
         user_id: &str,
     ) -> impl Future<Output = Result<(), RskitError>> + Send;
-
-    fn cleanup_expired(&self) -> impl Future<Output = Result<u64, RskitError>> + Send;
 }
 
 /// Object-safe, type-erased version of [`SessionStore`].
@@ -50,9 +47,6 @@ pub trait SessionStore: Send + Sync + 'static {
 /// This trait exists so we can store the session store as `Arc<dyn SessionStoreDyn>`
 /// inside [`AppState`](crate::app::AppState). You should not need to implement this
 /// directly; a blanket impl covers all `T: SessionStore`.
-///
-/// Only includes methods used by the session middleware and `SessionManager`.
-/// For `update_data` and `cleanup_expired`, use the concrete store via `Service<MyStore>`.
 pub trait SessionStoreDyn: Send + Sync + 'static {
     fn create<'a>(
         &'a self,
@@ -75,6 +69,12 @@ pub trait SessionStoreDyn: Send + Sync + 'static {
     fn touch<'a>(
         &'a self,
         id: &'a SessionId,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
+
+    fn update_data<'a>(
+        &'a self,
+        id: &'a SessionId,
+        data: serde_json::Value,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>>;
 
     fn destroy<'a>(
@@ -119,6 +119,14 @@ impl<T: SessionStore> SessionStoreDyn for T {
         id: &'a SessionId,
     ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
         Box::pin(SessionStore::touch(self, id))
+    }
+
+    fn update_data<'a>(
+        &'a self,
+        id: &'a SessionId,
+        data: serde_json::Value,
+    ) -> Pin<Box<dyn Future<Output = Result<(), RskitError>> + Send + 'a>> {
+        Box::pin(SessionStore::update_data(self, id, data))
     }
 
     fn destroy<'a>(
