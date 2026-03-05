@@ -75,3 +75,21 @@ async fn session_max_per_user_eviction() {
 
     assert!(store.read(&id1).await.unwrap().is_none());
 }
+
+#[tokio::test]
+async fn session_fingerprint_persisted_correctly() {
+    let store = setup_store().await;
+    let fingerprint = "sha256-unique-browser-fingerprint";
+    let meta = SessionMeta {
+        ip_address: "10.0.0.1".to_string(),
+        user_agent: "Firefox/120".to_string(),
+        device_name: "Firefox on Linux".to_string(),
+        device_type: "desktop".to_string(),
+        fingerprint: fingerprint.to_string(),
+    };
+
+    let id = store.create("user1", &meta).await.unwrap();
+    let session = store.read(&id).await.unwrap().unwrap();
+
+    assert_eq!(session.fingerprint, fingerprint);
+}

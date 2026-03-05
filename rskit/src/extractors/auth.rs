@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::error::RskitError;
-use crate::session::SessionData;
+use crate::session::{SessionData, SessionStore};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use std::sync::Arc;
@@ -151,18 +151,20 @@ where
             .get::<UserProviderService<U>>()
             .ok_or_else(|| RskitError::internal("UserProvider not registered"))?;
 
-        let user = provider
-            .inner
-            .find_by_id(&session.user_id)
-            .await?
-            .ok_or_else(|| {
+        let user = match provider.inner.find_by_id(&session.user_id).await? {
+            Some(user) => user,
+            None => {
                 tracing::warn!(
                     session_id = session.id.as_str(),
                     user_id = session.user_id.as_str(),
                     "Session references nonexistent user"
                 );
-                RskitError::Unauthorized
-            })?;
+                if let Some(ref store) = state.session_store {
+                    let _ = store.destroy(&session.id).await;
+                }
+                return Err(RskitError::Unauthorized);
+            }
+        };
 
         Ok(Auth(AuthData { user, session }))
     }

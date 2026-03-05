@@ -417,4 +417,41 @@ mod tests {
         let session = store.read(&id).await.unwrap().unwrap();
         assert_eq!(session.data["step"], 2);
     }
+
+    #[tokio::test]
+    async fn cleanup_expired_removes_only_expired() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let short_store = SqliteSessionStore::new(
+            db.clone(),
+            Duration::from_secs(1), // 1-second TTL
+            10,
+        );
+        short_store.initialize().await.unwrap();
+
+        let meta = test_meta();
+
+        // Create 2 sessions that will expire quickly
+        let _id1 = short_store.create("user1", &meta).await.unwrap();
+        let _id2 = short_store.create("user1", &meta).await.unwrap();
+
+        // Wait for them to expire
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Create a new store with longer TTL sharing the same DB
+        let long_store = SqliteSessionStore::new(
+            db,
+            Duration::from_secs(3600), // 1-hour TTL
+            10,
+        );
+
+        // Create 1 session that should survive
+        let id3 = long_store.create("user2", &meta).await.unwrap();
+
+        // Cleanup should remove exactly the 2 expired sessions
+        let removed = long_store.cleanup_expired().await.unwrap();
+        assert_eq!(removed, 2);
+
+        // The non-expired session should still be readable
+        assert!(long_store.read(&id3).await.unwrap().is_some());
+    }
 }
