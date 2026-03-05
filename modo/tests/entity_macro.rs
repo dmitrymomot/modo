@@ -194,6 +194,67 @@ fn test_renamed_entity_compiles() {
     };
 }
 
+// --- Entity with auto ULID ---
+
+#[modo::entity(table = "test_auto_ulid")]
+pub struct TestAutoUlid {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    pub name: String,
+}
+
+#[test]
+fn test_auto_ulid_entity_registers() {
+    let registrations: Vec<&EntityRegistration> = inventory::iter::<EntityRegistration>().collect();
+    let tables: Vec<&str> = registrations.iter().map(|r| r.table_name).collect();
+    assert!(tables.contains(&"test_auto_ulid"));
+}
+
+#[test]
+fn test_auto_ulid_model_compiles() {
+    let _ = test_auto_ulid::Model {
+        id: "01HXYZ".to_string(),
+        name: "test".to_string(),
+    };
+}
+
+// --- Entity with auto NanoID ---
+
+#[modo::entity(table = "test_auto_nanoid")]
+pub struct TestAutoNanoid {
+    #[entity(primary_key, auto = "nanoid")]
+    pub id: String,
+    pub name: String,
+}
+
+#[test]
+fn test_auto_nanoid_entity_registers() {
+    let registrations: Vec<&EntityRegistration> = inventory::iter::<EntityRegistration>().collect();
+    let tables: Vec<&str> = registrations.iter().map(|r| r.table_name).collect();
+    assert!(tables.contains(&"test_auto_nanoid"));
+}
+
+// --- Entity with auto ULID + timestamps ---
+
+#[modo::entity(table = "test_auto_ulid_ts")]
+#[entity(timestamps)]
+pub struct TestAutoUlidTs {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    pub title: String,
+}
+
+#[test]
+fn test_auto_ulid_with_timestamps_compiles() {
+    let now = chrono::Utc::now();
+    let _ = test_auto_ulid_ts::Model {
+        id: "01HXYZ".to_string(),
+        title: "test".to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+}
+
 // --- User entity not marked as framework ---
 
 #[test]

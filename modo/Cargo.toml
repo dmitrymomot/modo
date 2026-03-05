@@ -44,6 +44,7 @@ rand = "0.9"
 
 # Session IDs and request IDs
 ulid = "1"
+nanoid = "0.4"
 
 # Fingerprint hashing
 sha2 = "0.10"

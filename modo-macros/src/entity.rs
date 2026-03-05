@@ -108,6 +108,7 @@ struct FieldAttrs {
     on_update: Option<String>,
     via: Option<String>,
     renamed_from: Option<String>,
+    auto: Option<String>,
 }
 
 enum FieldKind {
@@ -248,6 +249,14 @@ fn parse_field_attrs(field: &mut syn::Field) -> Result<FieldAttrs> {
                     let lit: LitStr = meta.value()?.parse()?;
                     attrs.renamed_from = Some(lit.value());
                 }
+                "auto" => {
+                    let lit: LitStr = meta.value()?.parse()?;
+                    let val = lit.value();
+                    if val != "ulid" && val != "nanoid" {
+                        return Err(meta.error("auto must be \"ulid\" or \"nanoid\""));
+                    }
+                    attrs.auto = Some(val);
+                }
                 other => {
                     return Err(meta.error(format!("unknown entity field attribute: {other}")));
                 }
@@ -346,6 +355,16 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     // Collect primary key fields
     let pk_count = parsed_fields.iter().filter(|f| f.attrs.primary_key).count();
 
+    // Validate auto is only on primary_key fields
+    for f in &parsed_fields {
+        if f.attrs.auto.is_some() && !f.attrs.primary_key {
+            return Err(syn::Error::new_spanned(
+                &f.name,
+                "#[entity(auto = \"...\")] can only be used on primary_key fields",
+            ));
+        }
+    }
+
     // Generate column fields with #[sea_orm(...)] attributes
     let mut model_fields = Vec::new();
     for f in &parsed_fields {
@@ -358,8 +377,11 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let mut sea_orm_attrs = Vec::new();
 
         if f.attrs.primary_key {
-            // For composite PKs or string PKs, disable auto_increment
-            let auto_inc = f.attrs.auto_increment.unwrap_or(pk_count <= 1);
+            let auto_inc = if f.attrs.auto.is_some() {
+                false
+            } else {
+                f.attrs.auto_increment.unwrap_or(pk_count <= 1)
+            };
             if !auto_inc {
                 sea_orm_attrs.push(quote! { primary_key, auto_increment = false });
             } else {
@@ -530,8 +552,52 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
     }
 
+    // Collect auto-ID fields
+    let auto_id_stmts: Vec<_> = parsed_fields
+        .iter()
+        .filter_map(|f| {
+            f.attrs.auto.as_ref().map(|strategy| {
+                let name = &f.name;
+                let gen_call = match strategy.as_str() {
+                    "ulid" => quote! { modo::db::generate_ulid() },
+                    "nanoid" => quote! { modo::db::generate_nanoid() },
+                    _ => unreachable!(),
+                };
+                quote! {
+                    if modo::sea_orm::ActiveValue::is_not_set(&this.#name) {
+                        this.#name = modo::sea_orm::ActiveValue::Set(#gen_call);
+                    }
+                }
+            })
+        })
+        .collect();
+
     // Generate ActiveModelBehavior
-    let active_model_behavior = if struct_attrs.timestamps {
+    let needs_before_save = struct_attrs.timestamps || !auto_id_stmts.is_empty();
+
+    let active_model_behavior = if needs_before_save {
+        let timestamp_stmts = if struct_attrs.timestamps {
+            quote! {
+                let now = modo::chrono::Utc::now();
+                if insert {
+                    this.created_at = modo::sea_orm::ActiveValue::Set(now);
+                }
+                this.updated_at = modo::sea_orm::ActiveValue::Set(now);
+            }
+        } else {
+            quote! {}
+        };
+
+        let auto_id_block = if !auto_id_stmts.is_empty() {
+            quote! {
+                if insert {
+                    #(#auto_id_stmts)*
+                }
+            }
+        } else {
+            quote! {}
+        };
+
         quote! {
             #[async_trait::async_trait]
             impl ActiveModelBehavior for ActiveModel {
@@ -540,11 +606,8 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     C: ConnectionTrait,
                 {
                     let mut this = self;
-                    let now = modo::chrono::Utc::now();
-                    if insert {
-                        this.created_at = modo::sea_orm::ActiveValue::Set(now);
-                    }
-                    this.updated_at = modo::sea_orm::ActiveValue::Set(now);
+                    #auto_id_block
+                    #timestamp_stmts
                     Ok(this)
                 }
             }
