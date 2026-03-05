@@ -148,6 +148,9 @@ pub fn expand(_attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 parts: &mut rskit::axum::http::request::Parts,
                 state: &rskit::app::AppState,
             ) -> std::result::Result<Self, Self::Rejection> {
+                // NOTE: This `?` relies on BaseContext::Rejection being Infallible.
+                // If BaseContext ever gains a fallible rejection, this impl's
+                // Rejection type must change from Infallible accordingly.
                 let #base_name = rskit::templates::BaseContext::from_request_parts(parts, state).await?;
                 #user_extraction
                 #session_extraction

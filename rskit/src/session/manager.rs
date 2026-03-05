@@ -109,6 +109,7 @@ impl SessionManager {
     /// Destroy the current session.
     ///
     /// The session cookie is removed automatically on the response.
+    /// Safe to call when no session is active (idempotent).
     pub async fn logout(&mut self) -> Result<(), RskitError> {
         if let Some(ref session) = self.state.current_session {
             self.state.store.destroy(&session.id).await?;
@@ -183,6 +184,9 @@ impl SessionManager {
     }
 
     /// Replace the entire data blob for the current session.
+    ///
+    /// **Warning:** this overwrites all existing session data.
+    /// Use [`set()`](Self::set) to update individual keys instead.
     pub async fn update_data(&mut self, data: serde_json::Value) -> Result<(), RskitError> {
         let session = self
             .state
