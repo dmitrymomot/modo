@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use crate::error::RskitError;
-use crate::session::{SessionData, SessionStore};
+use crate::session::SessionData;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use std::sync::Arc;
@@ -193,7 +193,13 @@ where
 
         match provider.inner.find_by_id(&session.user_id).await {
             Ok(Some(user)) => Ok(OptionalAuth(Some(AuthData { user, session }))),
-            Ok(None) => Ok(OptionalAuth(None)),
+            Ok(None) => {
+                // Stale session referencing deleted user — clean up like Auth does
+                if let Some(ref store) = state.session_store {
+                    let _ = store.destroy(&session.id).await;
+                }
+                Ok(OptionalAuth(None))
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load user from session");
                 Ok(OptionalAuth(None))

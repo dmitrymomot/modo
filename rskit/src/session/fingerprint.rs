@@ -11,12 +11,12 @@ pub fn compute_fingerprint(
     hasher.update(user_agent.as_bytes());
     hasher.update(accept_language.as_bytes());
     hasher.update(accept_encoding.as_bytes());
-    hex::encode(hasher.finalize())
+    hex_encode::encode(hasher.finalize())
 }
 
 // sha2 outputs bytes; we need hex encoding. Use a simple inline hex encoder
 // to avoid adding the `hex` crate.
-mod hex {
+mod hex_encode {
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
         use std::fmt::Write;
         let bytes = bytes.as_ref();

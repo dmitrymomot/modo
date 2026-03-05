@@ -94,12 +94,10 @@ pub fn expand(_attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 ) -> std::result::Result<Self, Self::Rejection> {
                     let #base_name = rskit::templates::BaseContext::from_request_parts(parts, state).await?;
 
-                    let #auth_name = parts
-                        .extensions
-                        .get::<rskit::session::SessionData>()
-                        .and_then(|_session| {
-                            parts.extensions.get::<#inner_ty>().cloned()
-                        });
+                    let #auth_name = match rskit::extractors::auth::OptionalAuth::<#inner_ty>::from_request_parts(parts, state).await {
+                        Ok(rskit::extractors::auth::OptionalAuth(Some(auth_data))) => Some(auth_data.user),
+                        _ => None,
+                    };
 
                     Ok(Self { #base_name, #auth_name })
                 }

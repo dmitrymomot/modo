@@ -1,6 +1,6 @@
 use crate::config::{AppConfig, Environment};
 use crate::router::{ModuleRegistration, RouteRegistration};
-use crate::session::SqliteSessionStore;
+use crate::session::{SessionStore, SessionStoreDyn};
 use axum::Router;
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
@@ -18,7 +18,7 @@ pub struct AppState {
     pub services: ServiceRegistry,
     pub config: AppConfig,
     pub cookie_key: Key,
-    pub session_store: Option<Arc<SqliteSessionStore>>,
+    pub session_store: Option<Arc<dyn SessionStoreDyn>>,
 }
 
 impl FromRef<AppState> for Key {
@@ -52,7 +52,7 @@ pub struct AppBuilder {
     config: AppConfig,
     services: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
     layers: Vec<LayerFn>,
-    enable_sessions: bool,
+    session_store: Option<Arc<dyn SessionStoreDyn>>,
 }
 
 impl AppBuilder {
@@ -61,14 +61,16 @@ impl AppBuilder {
             config,
             services: HashMap::new(),
             layers: Vec::new(),
-            enable_sessions: false,
+            session_store: None,
         }
     }
 
-    /// Enable SQLite-backed session storage.
-    /// Creates the sessions table and registers SqliteSessionStore as a service.
-    pub fn sessions(mut self) -> Self {
-        self.enable_sessions = true;
+    /// Register a user-provided session store.
+    ///
+    /// The store must implement [`SessionStore`]. It will be type-erased and
+    /// stored in `AppState` for use by the session middleware and auth extractors.
+    pub fn session_store<S: SessionStore>(mut self, store: S) -> Self {
+        self.session_store = Some(Arc::new(store));
         self
     }
 
@@ -93,7 +95,7 @@ impl AppBuilder {
         self
     }
 
-    pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
         let db = if !self.config.database_url.is_empty() {
             let mut opts = ConnectOptions::new(&self.config.database_url);
             opts.max_connections(5).min_connections(1);
@@ -123,26 +125,10 @@ impl AppBuilder {
             Key::derive_from(self.config.secret_key.as_bytes())
         };
 
-        let session_store = if self.enable_sessions {
-            let db_conn = db
-                .as_ref()
-                .ok_or("Sessions require a database connection")?
-                .clone();
-            let store = SqliteSessionStore::new(
-                db_conn,
-                self.config.session_ttl,
-                self.config.session_max_per_user,
-            );
-            store.initialize().await?;
-            info!("Session store initialized");
-            let arc_store = Arc::new(store);
-            // Also register as a service so handlers can use Service<SqliteSessionStore>
-            self.services
-                .insert(TypeId::of::<SqliteSessionStore>(), arc_store.clone());
-            Some(arc_store)
-        } else {
-            None
-        };
+        let session_store = self.session_store;
+        if session_store.is_some() {
+            info!("Session store registered");
+        }
 
         let state = AppState {
             db,
@@ -222,9 +208,12 @@ impl AppBuilder {
         let listener = TcpListener::bind(&self.config.bind_address).await?;
         info!("Listening on {}", self.config.bind_address);
 
-        axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_signal())
-            .await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
         info!("Server shut down gracefully");
         Ok(())

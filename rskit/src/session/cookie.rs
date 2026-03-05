@@ -1,4 +1,5 @@
 use crate::app::AppState;
+use crate::config::Environment;
 use crate::session::SessionId;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -12,6 +13,8 @@ use cookie::Cookie;
 pub struct SessionCookie {
     jar: PrivateCookieJar,
     cookie_name: String,
+    is_secure: bool,
+    session_ttl: std::time::Duration,
 }
 
 impl SessionCookie {
@@ -21,9 +24,15 @@ impl SessionCookie {
         cookie.set_http_only(true);
         cookie.set_same_site(cookie::SameSite::Lax);
         cookie.set_path("/");
+        cookie.set_secure(self.is_secure);
+        cookie.set_max_age(cookie::time::Duration::seconds(
+            self.session_ttl.as_secs() as i64
+        ));
         Self {
             jar: self.jar.add(cookie),
             cookie_name: self.cookie_name,
+            is_secure: self.is_secure,
+            session_ttl: self.session_ttl,
         }
     }
 
@@ -32,6 +41,8 @@ impl SessionCookie {
         Self {
             jar: self.jar.remove(Cookie::from(self.cookie_name.clone())),
             cookie_name: self.cookie_name,
+            is_secure: self.is_secure,
+            session_ttl: self.session_ttl,
         }
     }
 }
@@ -49,6 +60,8 @@ impl FromRequestParts<AppState> for SessionCookie {
         Ok(Self {
             jar,
             cookie_name: state.config.session_cookie_name.clone(),
+            is_secure: state.config.environment == Environment::Production,
+            session_ttl: state.config.session_ttl,
         })
     }
 }

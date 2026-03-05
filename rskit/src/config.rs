@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub session_cookie_name: String,
     pub session_validate_fingerprint: bool,
     pub session_touch_interval: Duration,
+    pub trusted_proxies: Vec<ipnet::IpNet>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +40,7 @@ impl Default for AppConfig {
             session_cookie_name: "_rskit_session".to_string(),
             session_validate_fingerprint: true,
             session_touch_interval: Duration::from_secs(5 * 60), // 5 minutes
+            trusted_proxies: Vec::new(),
         }
     }
 }
@@ -89,6 +91,17 @@ impl AppConfig {
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(5 * 60),
             ),
+            trusted_proxies: env::var("RSKIT_TRUSTED_PROXIES")
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.trim().is_empty())
+                .filter_map(|s| {
+                    let s = s.trim();
+                    s.parse::<ipnet::IpNet>()
+                        .or_else(|_| s.parse::<std::net::IpAddr>().map(ipnet::IpNet::from))
+                        .ok()
+                })
+                .collect(),
         }
     }
 }

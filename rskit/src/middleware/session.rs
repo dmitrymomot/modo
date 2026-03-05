@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::session::{SessionId, SessionMeta, SessionStore};
+use crate::session::{SessionId, SessionMeta};
 use axum::extract::{Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -52,7 +52,8 @@ pub async fn session(
 
     // Validate fingerprint if enabled
     if state.config.session_validate_fingerprint {
-        let current_meta = SessionMeta::from_headers(request.headers());
+        let current_meta =
+            SessionMeta::from_request_data(request.extensions(), request.headers(), &state.config);
         if current_meta.fingerprint != session.fingerprint {
             tracing::warn!(
                 session_id = session.id.as_str(),
