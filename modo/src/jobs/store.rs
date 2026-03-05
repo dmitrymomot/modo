@@ -15,28 +15,6 @@ impl SqliteJobStore {
         Self { db }
     }
 
-    /// Sync the modo_jobs table schema. Called by AppBuilder::run().
-    pub async fn setup(&self) -> Result<(), Error> {
-        let backend = self.db.get_database_backend();
-        let schema = Schema::new(backend);
-        schema
-            .builder()
-            .register(entity::Entity)
-            .sync(&self.db)
-            .await?;
-
-        // Partial unique index for dedupe (raw SQL — SeaORM can't do conditional unique)
-        self.db
-            .execute_unprepared(
-                "CREATE UNIQUE INDEX IF NOT EXISTS idx_modo_jobs_dedupe \
-                 ON modo_jobs(dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('pending', 'running')",
-            )
-            .await
-            .ok();
-
-        Ok(())
-    }
-
     /// Insert a new job into the store.
     pub async fn enqueue(&self, job: NewJob) -> Result<JobId, Error> {
         let id = JobId::new();

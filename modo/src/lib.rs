@@ -1,7 +1,8 @@
-pub use modo_macros::{context, handler, job, main, module};
+pub use modo_macros::{context, entity, handler, job, main, migration, module};
 
 pub mod app;
 pub mod config;
+pub mod db;
 pub mod error;
 pub mod extractors;
 #[cfg(feature = "jobs")]

@@ -17,10 +17,12 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 mod context;
+mod entity;
 mod handler;
 mod job;
 mod main_macro;
 mod middleware;
+mod migration;
 mod module;
 
 /// Attribute macro for declaring route modules with shared prefix and middleware.
@@ -43,6 +45,22 @@ pub fn context(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn job(attr: TokenStream, item: TokenStream) -> TokenStream {
     job::expand(attr.into(), item.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Attribute macro for declaring database entities with auto-registration.
+#[proc_macro_attribute]
+pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
+    entity::expand(attr.into(), item.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Attribute macro for declaring escape-hatch migrations with auto-registration.
+#[proc_macro_attribute]
+pub fn migration(attr: TokenStream, item: TokenStream) -> TokenStream {
+    migration::expand(attr.into(), item.into())
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }

@@ -135,6 +135,13 @@ impl AppBuilder {
             Key::derive_from(self.config.secret_key.as_bytes())
         };
 
+        // --- Schema sync and migrations ---
+        if let Some(ref db_conn) = db
+            && let Err(e) = crate::db::sync_and_migrate(db_conn).await
+        {
+            panic!("Schema sync/migration failed: {e}");
+        }
+
         let session_store = self.session_store;
         if session_store.is_some() {
             info!("Session store registered");
@@ -169,10 +176,7 @@ impl AppBuilder {
                     }
 
                     let store = Arc::new(SqliteJobStore::new(db_conn.clone()));
-                    if let Err(e) = store.setup().await {
-                        panic!("Failed to setup modo_jobs table: {e}");
-                    }
-                    info!("Job queue initialized (modo_jobs table synced)");
+                    info!("Job queue initialized");
 
                     let queue = JobQueue::new(store);
                     JobQueue::set_global(queue.clone());

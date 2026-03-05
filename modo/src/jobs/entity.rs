@@ -27,3 +27,15 @@ pub struct Model {
 pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
+
+inventory::submit! {
+    crate::db::EntityRegistration {
+        table_name: "modo_jobs",
+        register_fn: |sb| sb.register(Entity),
+        is_framework: true,
+        extra_sql: &[
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_modo_jobs_dedupe \
+             ON modo_jobs(dedupe_key) WHERE dedupe_key IS NOT NULL AND state IN ('pending', 'running')",
+        ],
+    }
+}
