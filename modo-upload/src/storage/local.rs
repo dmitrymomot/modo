@@ -1,0 +1,95 @@
+use super::{FileStorage, StoredFile, generate_filename};
+use crate::file::UploadedFile;
+use crate::stream::UploadStream;
+use std::path::PathBuf;
+use tokio::io::AsyncWriteExt;
+
+/// Local filesystem storage backend.
+pub struct LocalStorage {
+    base_dir: PathBuf,
+}
+
+impl LocalStorage {
+    pub fn new(base_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            base_dir: base_dir.into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl FileStorage for LocalStorage {
+    async fn store(&self, prefix: &str, file: &UploadedFile) -> Result<StoredFile, modo::Error> {
+        let filename = generate_filename(file.file_name());
+        let rel_path = format!("{prefix}/{filename}");
+        let full_path = self.base_dir.join(&rel_path);
+
+        if let Some(parent) = full_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| modo::Error::internal(format!("Failed to create directory: {e}")))?;
+        }
+
+        tokio::fs::write(&full_path, file.data())
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to write file: {e}")))?;
+
+        Ok(StoredFile {
+            path: rel_path,
+            size: file.size() as u64,
+        })
+    }
+
+    async fn store_stream(
+        &self,
+        prefix: &str,
+        stream: &mut UploadStream,
+    ) -> Result<StoredFile, modo::Error> {
+        let filename = generate_filename(stream.file_name());
+        let rel_path = format!("{prefix}/{filename}");
+        let full_path = self.base_dir.join(&rel_path);
+
+        if let Some(parent) = full_path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| modo::Error::internal(format!("Failed to create directory: {e}")))?;
+        }
+
+        let mut file = tokio::fs::File::create(&full_path)
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to create file: {e}")))?;
+
+        let mut total_size: u64 = 0;
+        while let Some(chunk) = stream.chunk().await {
+            let chunk =
+                chunk.map_err(|e| modo::Error::internal(format!("Failed to read chunk: {e}")))?;
+            total_size += chunk.len() as u64;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| modo::Error::internal(format!("Failed to write chunk: {e}")))?;
+        }
+        file.flush()
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to flush file: {e}")))?;
+
+        Ok(StoredFile {
+            path: rel_path,
+            size: total_size,
+        })
+    }
+
+    async fn delete(&self, path: &str) -> Result<(), modo::Error> {
+        let full_path = self.base_dir.join(path);
+        tokio::fs::remove_file(&full_path)
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to delete file: {e}")))?;
+        Ok(())
+    }
+
+    async fn exists(&self, path: &str) -> Result<bool, modo::Error> {
+        let full_path = self.base_dir.join(path);
+        Ok(tokio::fs::try_exists(&full_path)
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to check file: {e}")))?)
+    }
+}
