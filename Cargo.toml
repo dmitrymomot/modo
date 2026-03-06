@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["modo", "modo-macros"]
+members = ["modo", "modo-macros", "examples/*"]
 
 [workspace.package]
 license = "Apache-2.0"
