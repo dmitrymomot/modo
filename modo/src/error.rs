@@ -229,17 +229,19 @@ impl Error {
                 "error": http.code(),
                 "message": http.message(),
                 "status": status.as_u16(),
-                "details": {},
             }));
             return (status, body).into_response();
         }
 
-        let body = Json(json!({
+        let mut body = json!({
             "error": self.code,
             "message": self.message,
             "status": status.as_u16(),
-            "details": self.details,
-        }));
+        });
+        if !self.details.is_empty() {
+            body["details"] = json!(self.details);
+        }
+        let body = Json(body);
 
         (status, body).into_response()
     }

@@ -150,7 +150,7 @@ async fn test_5xx_response_hides_details() {
     assert_eq!(json["error"], "internal_server_error");
     assert_eq!(json["message"], "Internal server error");
     assert_eq!(json["status"], 500);
-    assert_eq!(json["details"], json!({}));
+    assert!(json.get("details").is_none());
 }
 
 #[tokio::test]
@@ -166,7 +166,7 @@ async fn test_http_error_into_response() {
     assert_eq!(json["error"], "not_found");
     assert_eq!(json["message"], "Not found");
     assert_eq!(json["status"], 404);
-    assert_eq!(json["details"], json!({}));
+    assert!(json.get("details").is_none());
 }
 
 #[test]
