@@ -16,6 +16,21 @@ async fn test_error() -> Result<&'static str, HttpError> {
     Err(HttpError::NotFound)
 }
 
+#[modo::handler(GET, "/test/items/{id}")]
+async fn test_path_param(id: String) -> String {
+    format!("item:{id}")
+}
+
+#[modo::handler(GET, "/test/users/{user_id}/posts/{post_id}")]
+async fn test_partial_path_params(post_id: String) -> String {
+    format!("post:{post_id}")
+}
+
+#[modo::handler(GET, "/test/a/{x}/b/{y}")]
+async fn test_all_path_params(x: String, y: String) -> String {
+    format!("{x}:{y}")
+}
+
 fn build_test_router() -> axum::Router {
     use axum::response::IntoResponse;
 
@@ -101,4 +116,67 @@ async fn test_unknown_route_returns_404() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["status"], 404);
     assert_eq!(json["error"], "not_found");
+}
+
+#[tokio::test]
+async fn test_single_path_param() {
+    let app = build_test_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/test/items/42")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(&body[..], b"item:42");
+}
+
+#[tokio::test]
+async fn test_partial_path_param_extraction() {
+    let app = build_test_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/test/users/u1/posts/p2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(&body[..], b"post:p2");
+}
+
+#[tokio::test]
+async fn test_all_path_params_declared() {
+    let app = build_test_router();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/test/a/hello/b/world")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(&body[..], b"hello:world");
 }
