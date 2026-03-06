@@ -46,7 +46,13 @@ impl<'a> UploadValidator<'a> {
 }
 
 /// Check if a content type matches a pattern (e.g. `image/*` matches `image/png`).
+/// Parameters after `;` in the content type are stripped before matching.
 pub fn mime_matches(content_type: &str, pattern: &str) -> bool {
+    let content_type = content_type
+        .split(';')
+        .next()
+        .unwrap_or(content_type)
+        .trim();
     if pattern == "*/*" {
         return true;
     }
@@ -108,6 +114,24 @@ mod tests {
     #[test]
     fn mime_any_match() {
         assert!(mime_matches("anything/here", "*/*"));
+    }
+
+    #[test]
+    fn mime_with_params_exact() {
+        assert!(mime_matches("image/png; charset=utf-8", "image/png"));
+        assert!(!mime_matches("image/jpeg; charset=utf-8", "image/png"));
+    }
+
+    #[test]
+    fn mime_with_params_wildcard() {
+        assert!(mime_matches("image/png; charset=utf-8", "image/*"));
+        assert!(!mime_matches("text/plain; charset=utf-8", "image/*"));
+    }
+
+    #[test]
+    fn mime_empty_content_type() {
+        assert!(!mime_matches("", "image/png"));
+        assert!(!mime_matches("image/png", ""));
     }
 
     #[test]

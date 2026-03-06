@@ -84,4 +84,16 @@ impl UploadStream {
     pub fn size(&self) -> usize {
         self.chunks.iter().map(|c| c.len()).sum()
     }
+
+    /// Test helper — construct an `UploadStream` without multipart parsing.
+    #[doc(hidden)]
+    pub fn __test_new(name: &str, file_name: &str, content_type: &str, chunks: Vec<Bytes>) -> Self {
+        Self {
+            name: name.to_owned(),
+            file_name: file_name.to_owned(),
+            content_type: content_type.to_owned(),
+            chunks,
+            pos: 0,
+        }
+    }
 }

@@ -5,6 +5,7 @@ pub mod opendal;
 
 use crate::file::UploadedFile;
 use crate::stream::UploadStream;
+use std::path::{Component, Path, PathBuf};
 
 /// Metadata for a stored file.
 pub struct StoredFile {
@@ -32,6 +33,34 @@ pub trait FileStorage: Send + Sync + 'static {
 
     /// Check if a file exists at the given storage path.
     async fn exists(&self, path: &str) -> Result<bool, modo::Error>;
+}
+
+/// Validate that `path` stays within `base` by rejecting `..`, absolute paths, and other
+/// non-normal components. Returns the resolved path under `base`.
+pub(crate) fn ensure_within(base: &Path, path: &Path) -> Result<PathBuf, modo::Error> {
+    let mut result = base.to_path_buf();
+    for component in path.components() {
+        match component {
+            Component::Normal(c) => result.push(c),
+            Component::CurDir => {}
+            _ => return Err(modo::Error::internal("Invalid storage path")),
+        }
+    }
+    Ok(result)
+}
+
+/// Validate that a logical path (for object stores) contains no `..` or leading `/`.
+#[cfg(feature = "opendal")]
+pub(crate) fn validate_logical_path(path: &str) -> Result<(), modo::Error> {
+    if path.starts_with('/') {
+        return Err(modo::Error::internal("Invalid storage path"));
+    }
+    for segment in path.split('/') {
+        if segment == ".." {
+            return Err(modo::Error::internal("Invalid storage path"));
+        }
+    }
+    Ok(())
 }
 
 /// Generate a unique filename: `{ulid}.{ext}`.

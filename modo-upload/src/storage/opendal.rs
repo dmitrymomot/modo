@@ -1,4 +1,4 @@
-use super::{FileStorage, StoredFile, generate_filename};
+use super::{FileStorage, StoredFile, generate_filename, validate_logical_path};
 use crate::file::UploadedFile;
 use crate::stream::UploadStream;
 
@@ -23,6 +23,7 @@ impl OpendalStorage {
 #[async_trait::async_trait]
 impl FileStorage for OpendalStorage {
     async fn store(&self, prefix: &str, file: &UploadedFile) -> Result<StoredFile, modo::Error> {
+        validate_logical_path(prefix)?;
         let filename = generate_filename(file.file_name());
         let path = format!("{prefix}/{filename}");
         let size = file.size() as u64;
@@ -40,6 +41,7 @@ impl FileStorage for OpendalStorage {
         prefix: &str,
         stream: &mut UploadStream,
     ) -> Result<StoredFile, modo::Error> {
+        validate_logical_path(prefix)?;
         let filename = generate_filename(stream.file_name());
         let path = format!("{prefix}/{filename}");
 
@@ -60,6 +62,7 @@ impl FileStorage for OpendalStorage {
     }
 
     async fn delete(&self, path: &str) -> Result<(), modo::Error> {
+        validate_logical_path(path)?;
         self.operator
             .delete(path)
             .await
@@ -68,6 +71,7 @@ impl FileStorage for OpendalStorage {
     }
 
     async fn exists(&self, path: &str) -> Result<bool, modo::Error> {
+        validate_logical_path(path)?;
         self.operator
             .exists(path)
             .await

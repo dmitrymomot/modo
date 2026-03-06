@@ -1,7 +1,7 @@
-use super::{FileStorage, StoredFile, generate_filename};
+use super::{FileStorage, StoredFile, ensure_within, generate_filename};
 use crate::file::UploadedFile;
 use crate::stream::UploadStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
 /// Local filesystem storage backend.
@@ -22,7 +22,7 @@ impl FileStorage for LocalStorage {
     async fn store(&self, prefix: &str, file: &UploadedFile) -> Result<StoredFile, modo::Error> {
         let filename = generate_filename(file.file_name());
         let rel_path = format!("{prefix}/{filename}");
-        let full_path = self.base_dir.join(&rel_path);
+        let full_path = ensure_within(&self.base_dir, Path::new(&rel_path))?;
 
         if let Some(parent) = full_path.parent() {
             tokio::fs::create_dir_all(parent)
@@ -47,7 +47,7 @@ impl FileStorage for LocalStorage {
     ) -> Result<StoredFile, modo::Error> {
         let filename = generate_filename(stream.file_name());
         let rel_path = format!("{prefix}/{filename}");
-        let full_path = self.base_dir.join(&rel_path);
+        let full_path = ensure_within(&self.base_dir, Path::new(&rel_path))?;
 
         if let Some(parent) = full_path.parent() {
             tokio::fs::create_dir_all(parent)
@@ -79,7 +79,7 @@ impl FileStorage for LocalStorage {
     }
 
     async fn delete(&self, path: &str) -> Result<(), modo::Error> {
-        let full_path = self.base_dir.join(path);
+        let full_path = ensure_within(&self.base_dir, Path::new(path))?;
         tokio::fs::remove_file(&full_path)
             .await
             .map_err(|e| modo::Error::internal(format!("Failed to delete file: {e}")))?;
@@ -87,7 +87,7 @@ impl FileStorage for LocalStorage {
     }
 
     async fn exists(&self, path: &str) -> Result<bool, modo::Error> {
-        let full_path = self.base_dir.join(path);
+        let full_path = ensure_within(&self.base_dir, Path::new(path))?;
         Ok(tokio::fs::try_exists(&full_path)
             .await
             .map_err(|e| modo::Error::internal(format!("Failed to check file: {e}")))?)

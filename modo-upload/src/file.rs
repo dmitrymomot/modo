@@ -58,12 +58,12 @@ impl UploadedFile {
     }
 
     /// File extension from the original filename (lowercase, without dot).
-    pub fn extension(&self) -> Option<&str> {
+    pub fn extension(&self) -> Option<String> {
         self.file_name.rsplit('.').next().and_then(|ext| {
             if ext == self.file_name {
                 None
             } else {
-                Some(ext)
+                Some(ext.to_ascii_lowercase())
             }
         })
     }
@@ -87,5 +87,40 @@ impl UploadedFile {
     /// Start building a validation chain.
     pub fn validate(&self) -> UploadValidator<'_> {
         UploadValidator::new(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file_with_name(file_name: &str) -> UploadedFile {
+        UploadedFile::__test_new("f", file_name, "application/octet-stream", b"")
+    }
+
+    #[test]
+    fn extension_lowercase() {
+        assert_eq!(file_with_name("photo.JPG").extension(), Some("jpg".into()));
+    }
+
+    #[test]
+    fn extension_compound() {
+        assert_eq!(
+            file_with_name("archive.tar.gz").extension(),
+            Some("gz".into())
+        );
+    }
+
+    #[test]
+    fn extension_dotfile() {
+        assert_eq!(
+            file_with_name(".gitignore").extension(),
+            Some("gitignore".into())
+        );
+    }
+
+    #[test]
+    fn extension_none() {
+        assert_eq!(file_with_name("noext").extension(), None);
     }
 }
