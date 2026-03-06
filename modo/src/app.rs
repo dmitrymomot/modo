@@ -1,8 +1,8 @@
 use crate::config::{
     HttpConfig, RateLimitConfig, SecurityHeadersConfig, ServerConfig, TrailingSlash, parse_size,
 };
-use crate::error::HttpError;
 use crate::cors::CorsConfig;
+use crate::error::HttpError;
 use crate::health::{self, ReadinessCheck};
 use crate::logging;
 use crate::middleware;

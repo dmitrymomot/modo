@@ -24,6 +24,7 @@ pub use axum;
 pub use axum_extra;
 pub use chrono;
 pub use inventory;
+pub use serde;
 pub use serde_json;
 pub use tokio;
 pub use tracing;
