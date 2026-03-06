@@ -1,0 +1,10 @@
+[package]
+name = "todo-api"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+modo = { path = "../../modo" }
+modo-db = { path = "../../modo-db", features = ["sqlite"] }
+serde = { version = "1", features = ["derive"] }
