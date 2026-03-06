@@ -1,5 +1,6 @@
 use crate::app::AppState;
 use crate::error::{Error, HttpError};
+use crate::sanitize::Sanitize;
 use axum::extract::FromRequest;
 use axum::http::{Request, StatusCode};
 use std::ops::Deref;
@@ -46,7 +47,7 @@ impl<T> Deref for ValidatedForm<T> {
 
 impl<T> FromRequest<AppState> for ValidatedForm<T>
 where
-    T: serde::de::DeserializeOwned + Validate,
+    T: serde::de::DeserializeOwned + Sanitize + Validate,
 {
     type Rejection = Error;
 
@@ -54,9 +55,10 @@ where
         req: Request<axum::body::Body>,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let axum::Form(value) = axum::Form::<T>::from_request(req, state)
+        let axum::Form(mut value) = axum::Form::<T>::from_request(req, state)
             .await
             .map_err(|e| HttpError::BadRequest.with_message(format!("{e}")))?;
+        value.sanitize();
         value.validate()?;
         Ok(ValidatedForm(value))
     }
@@ -75,7 +77,7 @@ impl<T> Deref for ValidatedJson<T> {
 
 impl<T> FromRequest<AppState> for ValidatedJson<T>
 where
-    T: serde::de::DeserializeOwned + Validate,
+    T: serde::de::DeserializeOwned + Sanitize + Validate,
 {
     type Rejection = Error;
 
@@ -83,9 +85,10 @@ where
         req: Request<axum::body::Body>,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let axum::Json(value) = axum::Json::<T>::from_request(req, state)
+        let axum::Json(mut value) = axum::Json::<T>::from_request(req, state)
             .await
             .map_err(|e| HttpError::BadRequest.with_message(format!("{e}")))?;
+        value.sanitize();
         value.validate()?;
         Ok(ValidatedJson(value))
     }

@@ -15,7 +15,11 @@ pub async fn security_headers_middleware(
     if !config.enabled {
         return response;
     }
-    apply_headers(response.headers_mut(), config, &state.server_config.environment);
+    apply_headers(
+        response.headers_mut(),
+        config,
+        &state.server_config.environment,
+    );
     response
 }
 
