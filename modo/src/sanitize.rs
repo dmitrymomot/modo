@@ -1,6 +1,28 @@
+use std::any::{Any, TypeId};
+
 /// Trait implemented by `#[derive(modo::Sanitize)]` to sanitize struct fields in place.
 pub trait Sanitize {
     fn sanitize(&mut self);
+}
+
+/// Registration entry for an auto-sanitizer, collected via `inventory`.
+pub struct SanitizerRegistration {
+    pub type_id: TypeId,
+    pub sanitize: fn(&mut dyn Any),
+}
+
+inventory::collect!(SanitizerRegistration);
+
+/// Auto-sanitize a value if a sanitizer is registered for its type.
+/// Called by extractors (Form, Json, MultipartForm) during request parsing.
+/// No-op if no `#[derive(Sanitize)]` was used on the type.
+pub fn auto_sanitize<T: Any + 'static>(value: &mut T) {
+    for reg in inventory::iter::<SanitizerRegistration> {
+        if reg.type_id == TypeId::of::<T>() {
+            (reg.sanitize)(value);
+            return;
+        }
+    }
 }
 
 /// Strip leading and trailing whitespace.

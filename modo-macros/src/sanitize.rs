@@ -130,12 +130,28 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
+    // Generate a unique function name for the sanitizer trampoline
+    let sanitize_fn_name = quote::format_ident!("__sanitize_{}", struct_name);
+
     Ok(quote! {
         impl #impl_generics modo::sanitize::Sanitize for #struct_name #ty_generics #where_clause {
             fn sanitize(&mut self) {
                 #(#field_sanitizations)*
             }
         }
+
+        // Auto-register for inventory-based lookup (used by extractors)
+        #[allow(non_snake_case)]
+        fn #sanitize_fn_name(any: &mut dyn std::any::Any) {
+            if let Some(v) = any.downcast_mut::<#struct_name>() {
+                <#struct_name as modo::sanitize::Sanitize>::sanitize(v);
+            }
+        }
+
+        modo::inventory::submit!(modo::sanitize::SanitizerRegistration {
+            type_id: std::any::TypeId::of::<#struct_name>(),
+            sanitize: #sanitize_fn_name,
+        });
     })
 }
 
