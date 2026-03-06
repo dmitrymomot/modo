@@ -188,8 +188,132 @@ fn normalize_email_plus_in_domain_only() {
         email: "user@exam+ple.com".into(),
     };
     v.sanitize();
-    // No `+` in local part, so unchanged
+    // No `+` in local part, so only lowercased
     assert_eq!(v.email, "user@exam+ple.com");
+}
+
+// =============================================================================
+// Edge-case tests
+// =============================================================================
+
+#[test]
+fn empty_string_inputs() {
+    use modo::sanitize;
+
+    assert_eq!(sanitize::trim(String::new()), "");
+    assert_eq!(sanitize::strip_html(String::new()), "");
+    assert_eq!(sanitize::truncate(String::new(), 5), "");
+    assert_eq!(sanitize::lowercase(String::new()), "");
+    assert_eq!(sanitize::uppercase(String::new()), "");
+    assert_eq!(sanitize::collapse_whitespace(String::new()), "");
+    assert_eq!(sanitize::normalize_email(String::new()), "");
+}
+
+#[test]
+fn strip_html_unclosed_tag() {
+    let mut v = StripHtmlField {
+        content: "text<b".into(),
+    };
+    v.sanitize();
+    // Unclosed tag at end swallows content after `<`
+    assert_eq!(v.content, "text");
+}
+
+#[test]
+fn strip_html_angle_brackets_in_text() {
+    let mut v = StripHtmlField {
+        content: "3 > 2".into(),
+    };
+    v.sanitize();
+    // `>` ends the "tag" opened by nothing — false-positive strips " 2"
+    assert_eq!(v.content, "3  2");
+}
+
+#[test]
+fn collapse_whitespace_already_clean() {
+    let mut v = CollapseWsField {
+        text: "hello world".into(),
+    };
+    v.sanitize();
+    assert_eq!(v.text, "hello world");
+}
+
+#[test]
+fn collapse_whitespace_leading_trailing() {
+    let mut v = CollapseWsField {
+        text: "  hello  ".into(),
+    };
+    v.sanitize();
+    // Leading/trailing whitespace collapsed to single spaces
+    assert_eq!(v.text, " hello ");
+}
+
+#[derive(serde::Deserialize, modo::Sanitize)]
+struct TruncateZeroField {
+    #[clean(truncate = 0)]
+    text: String,
+}
+
+#[test]
+fn truncate_zero() {
+    let mut v = TruncateZeroField {
+        text: "hello".into(),
+    };
+    v.sanitize();
+    assert_eq!(v.text, "");
+}
+
+#[test]
+fn normalize_email_multiple_plus() {
+    let mut v = NormalizeEmailField {
+        email: "u+a+b@x.com".into(),
+    };
+    v.sanitize();
+    assert_eq!(v.email, "u@x.com");
+}
+
+#[test]
+fn normalize_email_full_lowercasing() {
+    let mut v = NormalizeEmailField {
+        email: "User@Example.COM".into(),
+    };
+    v.sanitize();
+    assert_eq!(v.email, "user@example.com");
+}
+
+#[derive(serde::Deserialize, modo::Sanitize)]
+struct CustomOptionField {
+    #[clean(custom = "reverse_string")]
+    text: Option<String>,
+}
+
+#[test]
+fn custom_function_on_option() {
+    let mut v = CustomOptionField {
+        text: Some("hello".into()),
+    };
+    v.sanitize();
+    assert_eq!(v.text, Some("olleh".into()));
+
+    let mut v = CustomOptionField { text: None };
+    v.sanitize();
+    assert!(v.text.is_none());
+}
+
+#[derive(serde::Deserialize, modo::Sanitize)]
+struct MultiAttrField {
+    #[clean(trim)]
+    #[clean(lowercase)]
+    name: String,
+}
+
+#[test]
+fn multiple_clean_attributes_on_one_field() {
+    let mut v = MultiAttrField {
+        name: "  HELLO  ".into(),
+    };
+    v.sanitize();
+    assert_eq!(v.name, "hello");
 }
 
 // =============================================================================
