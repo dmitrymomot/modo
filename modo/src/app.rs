@@ -1,0 +1,539 @@
+use crate::config::{
+    HttpConfig, RateLimitConfig, SecurityHeadersConfig, ServerConfig, TrailingSlash, parse_size,
+};
+use crate::cors::CorsConfig;
+use crate::health::{self, ReadinessCheck};
+use crate::logging;
+use crate::middleware;
+use crate::request_id;
+use crate::router::{ModuleRegistration, RouteRegistration};
+use axum::Router;
+use axum::extract::FromRef;
+use axum::http::header;
+use axum::response::IntoResponse;
+use axum::routing::get;
+use axum_extra::extract::cookie::Key;
+use std::any::{Any, TypeId};
+use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::net::TcpListener;
+use tower::{Layer, Service};
+use tower_http::catch_panic::CatchPanicLayer;
+use tower_http::compression::CompressionLayer;
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
+use tower_http::timeout::TimeoutLayer;
+use tracing::{info, warn};
+
+#[derive(Clone)]
+pub struct AppState {
+    pub services: ServiceRegistry,
+    pub server_config: ServerConfig,
+    pub cookie_key: Key,
+}
+
+impl FromRef<AppState> for Key {
+    fn from_ref(state: &AppState) -> Self {
+        state.cookie_key.clone()
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct ServiceRegistry {
+    services: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
+}
+
+impl ServiceRegistry {
+    pub fn new() -> Self {
+        Self {
+            services: Arc::new(HashMap::new()),
+        }
+    }
+
+    /// Insert a service into the registry (builder pattern, before sharing).
+    pub fn with<T: Send + Sync + 'static>(mut self, svc: T) -> Self {
+        Arc::get_mut(&mut self.services)
+            .expect("ServiceRegistry::with called after Arc was shared")
+            .insert(TypeId::of::<T>(), Arc::new(svc));
+        self
+    }
+
+    pub fn get<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
+        self.services
+            .get(&TypeId::of::<T>())
+            .and_then(|s| s.clone().downcast::<T>().ok())
+    }
+}
+
+type LayerFn = Box<dyn FnOnce(Router<AppState>) -> Router<AppState> + Send>;
+type ShutdownHook = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+
+pub struct AppBuilder {
+    server_config: ServerConfig,
+    services: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
+    layers: Vec<LayerFn>,
+    cors_config: Option<CorsConfig>,
+    shutdown_hooks: Vec<ShutdownHook>,
+    readiness_checks: Vec<ReadinessCheck>,
+    enable_request_logging: bool,
+    // Middleware overrides (take precedence over YAML config)
+    override_http: Option<HttpConfig>,
+    override_security_headers: Option<SecurityHeadersConfig>,
+    override_rate_limit: Option<Option<RateLimitConfig>>,
+    override_trailing_slash: Option<TrailingSlash>,
+    override_maintenance: Option<bool>,
+}
+
+impl AppBuilder {
+    pub fn new() -> Self {
+        Self {
+            server_config: ServerConfig::default(),
+            services: HashMap::new(),
+            layers: Vec::new(),
+            cors_config: None,
+            shutdown_hooks: Vec::new(),
+            readiness_checks: Vec::new(),
+            enable_request_logging: true,
+            override_http: None,
+            override_security_headers: None,
+            override_rate_limit: None,
+            override_trailing_slash: None,
+            override_maintenance: None,
+        }
+    }
+
+    pub fn server_config(mut self, config: ServerConfig) -> Self {
+        self.server_config = config;
+        self
+    }
+
+    pub fn service<T: Send + Sync + 'static>(mut self, svc: T) -> Self {
+        self.services.insert(TypeId::of::<T>(), Arc::new(svc));
+        self
+    }
+
+    /// Add a global Tower layer applied outermost (after module and handler middleware).
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: Layer<axum::routing::Route> + Clone + Send + Sync + 'static,
+        L::Service: Service<axum::http::Request<axum::body::Body>> + Clone + Send + Sync + 'static,
+        <L::Service as Service<axum::http::Request<axum::body::Body>>>::Response:
+            axum::response::IntoResponse + 'static,
+        <L::Service as Service<axum::http::Request<axum::body::Body>>>::Error:
+            Into<std::convert::Infallible> + 'static,
+        <L::Service as Service<axum::http::Request<axum::body::Body>>>::Future: Send + 'static,
+    {
+        self.layers
+            .push(Box::new(move |r: Router<AppState>| r.layer(layer)));
+        self
+    }
+
+    pub fn cors(mut self, config: CorsConfig) -> Self {
+        self.cors_config = Some(config);
+        self
+    }
+
+    pub fn on_shutdown<F, Fut>(mut self, f: F) -> Self
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.shutdown_hooks.push(Box::new(move || Box::pin(f())));
+        self
+    }
+
+    pub fn readiness_check<F, Fut>(mut self, f: F) -> Self
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send + 'static,
+    {
+        self.readiness_checks.push(Arc::new(move || Box::pin(f())));
+        self
+    }
+
+    pub fn disable_request_logging(mut self) -> Self {
+        self.enable_request_logging = false;
+        self
+    }
+
+    pub fn timeout(mut self, secs: u64) -> Self {
+        self.ensure_http_override().timeout = Some(secs);
+        self
+    }
+
+    pub fn no_timeout(mut self) -> Self {
+        self.ensure_http_override().timeout = None;
+        self
+    }
+
+    pub fn body_limit(mut self, limit: &str) -> Self {
+        self.ensure_http_override().body_limit = Some(limit.to_string());
+        self
+    }
+
+    pub fn compression(mut self, enabled: bool) -> Self {
+        self.ensure_http_override().compression = enabled;
+        self
+    }
+
+    pub fn catch_panic(mut self, enabled: bool) -> Self {
+        self.ensure_http_override().catch_panic = enabled;
+        self
+    }
+
+    pub fn security_headers(mut self, config: SecurityHeadersConfig) -> Self {
+        self.override_security_headers = Some(config);
+        self
+    }
+
+    pub fn rate_limit(mut self, config: RateLimitConfig) -> Self {
+        self.override_rate_limit = Some(Some(config));
+        self
+    }
+
+    pub fn no_rate_limit(mut self) -> Self {
+        self.override_rate_limit = Some(None);
+        self
+    }
+
+    pub fn trailing_slash(mut self, mode: TrailingSlash) -> Self {
+        self.override_trailing_slash = Some(mode);
+        self
+    }
+
+    pub fn maintenance(mut self, enabled: bool) -> Self {
+        self.override_maintenance = Some(enabled);
+        self
+    }
+
+    fn ensure_http_override(&mut self) -> &mut HttpConfig {
+        if self.override_http.is_none() {
+            self.override_http = Some(self.server_config.http.clone());
+        }
+        self.override_http.as_mut().unwrap()
+    }
+
+    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+        // Resolve effective config (builder overrides > YAML config)
+        let mut server_config = self.server_config.clone();
+        if let Some(ref http) = self.override_http {
+            server_config.http = http.clone();
+        }
+        if let Some(ref sec) = self.override_security_headers {
+            server_config.security_headers = sec.clone();
+        }
+        if let Some(ref rl) = self.override_rate_limit {
+            server_config.rate_limit = rl.clone();
+        }
+        if let Some(ref ts) = self.override_trailing_slash {
+            server_config.http.trailing_slash = ts.clone();
+        }
+        if let Some(m) = self.override_maintenance {
+            server_config.http.maintenance = m;
+        }
+
+        let http_config = &server_config.http;
+
+        let cookie_key = if server_config.secret_key.is_empty() {
+            warn!("secret_key is empty — generating random key; cookies will not survive restarts");
+            Key::generate()
+        } else {
+            Key::derive_from(server_config.secret_key.as_bytes())
+        };
+
+        let state = AppState {
+            services: ServiceRegistry {
+                services: Arc::new(self.services),
+            },
+            server_config: server_config.clone(),
+            cookie_key,
+        };
+
+        // 1. Build router with health check routes (always registered, before inventory routes)
+        let liveness_path = server_config.liveness_path.clone();
+        let readiness_path = server_config.readiness_path.clone();
+        let readiness_checks = self.readiness_checks;
+
+        let mut router = Router::new().route(&liveness_path, get(health::liveness_handler));
+
+        if readiness_checks.is_empty() {
+            router = router.route(&readiness_path, get(health::liveness_handler));
+        } else {
+            let checks = readiness_checks.clone();
+            router = router.route(
+                &readiness_path,
+                get(move || {
+                    let checks = checks.clone();
+                    async move { health::readiness_handler(checks).await.into_response() }
+                }),
+            );
+        }
+
+        // 2. Collect module registrations into a lookup by name
+        let modules: HashMap<&str, &ModuleRegistration> = inventory::iter::<ModuleRegistration>
+            .into_iter()
+            .map(|m| (m.name, m))
+            .collect();
+
+        // Group route registrations by module
+        let mut root_routes: Vec<&RouteRegistration> = Vec::new();
+        let mut module_routes: HashMap<&str, Vec<&RouteRegistration>> = HashMap::new();
+
+        for reg in inventory::iter::<RouteRegistration> {
+            match reg.module {
+                Some(name) => module_routes.entry(name).or_default().push(reg),
+                None => root_routes.push(reg),
+            }
+        }
+
+        // Add module-less routes with handler middleware
+        for reg in &root_routes {
+            let mut method_router = (reg.handler)();
+            // Apply handler middleware in reverse order (last declared = innermost)
+            for mw in reg.middleware.iter().rev() {
+                method_router = mw(method_router);
+            }
+            router = router.route(reg.path, method_router);
+            info!("Registered route: {:?} {}", reg.method, reg.path);
+        }
+
+        // Add module routes grouped under their prefix with module middleware
+        for (mod_name, routes) in &module_routes {
+            let mut sub_router = Router::new();
+            for reg in routes {
+                let mut method_router = (reg.handler)();
+                for mw in reg.middleware.iter().rev() {
+                    method_router = mw(method_router);
+                }
+                sub_router = sub_router.route(reg.path, method_router);
+                info!(
+                    "Registered route: {:?} {} (module: {})",
+                    reg.method, reg.path, mod_name
+                );
+            }
+
+            // Apply module-level middleware (reverse order: last = innermost)
+            if let Some(module_reg) = modules.get(mod_name) {
+                for mw in module_reg.middleware.iter().rev() {
+                    sub_router = mw(sub_router);
+                }
+                router = router.nest(module_reg.prefix, sub_router);
+                info!("Registered module: {} at {}", mod_name, module_reg.prefix);
+            } else {
+                // Module routes without a ModuleRegistration — nest at root
+                router = router.merge(sub_router);
+            }
+        }
+
+        // =====================================================================
+        // Middleware stack (applied bottom-up; last .layer() call = outermost)
+        // Stack order: CORS > Maintenance > Catch Panic > Request ID >
+        //   Sensitive Headers > Tracing > Client IP > Timeout > Trailing Slash >
+        //   Compression > Body Limit > Security Headers > Error Handler >
+        //   Rate Limiter > User Layers > Module/Handler MW (innermost)
+        // =====================================================================
+
+        // --- User global layers (innermost of framework layers) ---
+        for layer_fn in self.layers {
+            router = layer_fn(router);
+        }
+
+        // --- Rate limiter (global) ---
+        if let Some(ref rl_config) = server_config.rate_limit {
+            let limiter = Arc::new(middleware::RateLimiterState::new(
+                rl_config.requests,
+                rl_config.window_secs,
+            ));
+            middleware::rate_limit::spawn_cleanup_task(limiter.clone());
+            let mw = middleware::rate_limit::rate_limit_middleware(limiter, middleware::by_ip());
+            router = router.layer(axum::middleware::from_fn(move |req, next| {
+                let mw = mw.clone();
+                async move { mw(req, next).await }
+            }));
+        }
+
+        // --- Error handler ---
+        if inventory::iter::<crate::error::ErrorHandlerRegistration>
+            .into_iter()
+            .next()
+            .is_some()
+        {
+            router = router.layer(axum::middleware::from_fn(
+                crate::error::error_handler_middleware,
+            ));
+        }
+
+        // --- Security headers ---
+        if server_config.security_headers.enabled {
+            router = router.layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                middleware::security_headers_middleware,
+            ));
+        }
+
+        // --- Body limit ---
+        if let Some(ref limit_str) = http_config.body_limit {
+            let limit =
+                parse_size(limit_str).map_err(|e| format!("invalid body_limit config: {e}"))?;
+            router = router.layer(RequestBodyLimitLayer::new(limit));
+        }
+
+        // --- Compression ---
+        if http_config.compression {
+            router = router.layer(CompressionLayer::new());
+        }
+
+        // --- Trailing slash ---
+        if http_config.trailing_slash != TrailingSlash::None {
+            router = router.layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                middleware::trailing_slash_middleware,
+            ));
+        }
+
+        // --- Request timeout ---
+        if let Some(secs) = http_config.timeout {
+            router = router.layer(TimeoutLayer::with_status_code(
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                Duration::from_secs(secs),
+            ));
+        }
+
+        // --- Client IP extraction (always on) ---
+        router = router.layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::client_ip_middleware,
+        ));
+
+        // --- Tracing ---
+        if self.enable_request_logging {
+            let level = logging::parse_level(&server_config.log_level);
+            router = router.layer(logging::trace_layer(level));
+        }
+
+        // --- Sensitive headers ---
+        if http_config.sensitive_headers {
+            let sensitive: Arc<[axum::http::HeaderName]> = Arc::from(vec![
+                header::AUTHORIZATION,
+                header::COOKIE,
+                header::SET_COOKIE,
+                header::PROXY_AUTHORIZATION,
+            ]);
+            router = router.layer(SetSensitiveRequestHeadersLayer::from_shared(sensitive));
+        }
+
+        // --- Request ID (always on) ---
+        router = router.layer(axum::middleware::from_fn(request_id::request_id_middleware));
+
+        // --- Catch panic ---
+        if http_config.catch_panic {
+            router = router.layer(CatchPanicLayer::custom(middleware::PanicHandler));
+        }
+
+        // --- Maintenance mode ---
+        if http_config.maintenance {
+            router = router.layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                middleware::maintenance_middleware,
+            ));
+        }
+
+        // --- CORS (outermost) ---
+        let cors_config = self
+            .cors_config
+            .or_else(|| server_config.cors.clone().map(CorsConfig::from));
+        if let Some(cors) = cors_config {
+            router = router.layer(cors.into_layer());
+        }
+
+        // Finalize app with state
+        let app = router.with_state(state.clone());
+
+        let bind_addr = state.server_config.bind_address();
+        let listener = TcpListener::bind(&bind_addr).await?;
+        info!("Listening on {}", bind_addr);
+
+        // Graceful shutdown with configurable timeout
+        let shutdown_timeout = Duration::from_secs(server_config.shutdown_timeout_secs);
+        let shutdown_hooks = self.shutdown_hooks;
+        let shutdown_notify = Arc::new(tokio::sync::Notify::new());
+        let notify_clone = shutdown_notify.clone();
+
+        let serve = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            notify_clone.notify_one();
+        });
+        let serve_handle = tokio::spawn(async move { serve.await });
+
+        // Wait for shutdown signal to fire
+        shutdown_notify.notified().await;
+        info!(
+            "Shutdown signal received, draining connections (timeout: {}s)",
+            shutdown_timeout.as_secs()
+        );
+
+        // Timeout only the drain period (not the entire server lifetime)
+        match tokio::time::timeout(shutdown_timeout, serve_handle).await {
+            Ok(Ok(Ok(()))) => info!("All connections drained"),
+            Ok(Ok(Err(e))) => warn!("Server error during shutdown: {e}"),
+            Ok(Err(e)) => warn!("Server task panicked: {e}"),
+            Err(_) => warn!(
+                "Drain timed out after {}s, forcing shutdown",
+                shutdown_timeout.as_secs()
+            ),
+        }
+
+        // Run cleanup hooks sequentially (5s budget per hook)
+        if !shutdown_hooks.is_empty() {
+            info!("Running {} shutdown hook(s)", shutdown_hooks.len());
+            for hook in shutdown_hooks {
+                if tokio::time::timeout(Duration::from_secs(5), hook())
+                    .await
+                    .is_err()
+                {
+                    warn!("Shutdown hook timed out");
+                }
+            }
+        }
+
+        info!("Server shut down");
+        Ok(())
+    }
+}
+
+impl Default for AppBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+}

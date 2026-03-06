@@ -1,0 +1,47 @@
+[package]
+name = "modo"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[dependencies]
+modo-macros = { path = "../modo-macros" }
+
+# Core
+axum = "0.8"
+axum-extra = { version = "0.10", features = ["cookie-signed", "cookie-private"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = [
+    "trace", "cors", "timeout", "limit",
+    "compression-full", "catch-panic", "sensitive-headers"
+] }
+dashmap = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+inventory = "0.3"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+
+# Config
+dotenvy = "0.15"
+serde_yaml_ng = "0.10"
+
+# Cookies (key derivation)
+cookie = { version = "0.18", features = ["key-expansion"] }
+
+# Session IDs and request IDs
+ulid = "1"
+
+# Misc
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+reqwest = { version = "0.12", features = ["json"] }
