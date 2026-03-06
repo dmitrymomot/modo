@@ -45,8 +45,8 @@ Refactor strategy:
 - `just test` — run all workspace tests
 - `just check` — fmt-check + lint + test (CI/pre-push)
 - `cargo check` — type check
-- `cargo build --example hello` — build example
-- `cargo run --example hello` — run example server
+- `cargo build -p hello` — build example
+- `cargo run -p hello` — run example server
 
 ## Conventions
 
