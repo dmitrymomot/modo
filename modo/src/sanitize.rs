@@ -19,6 +19,10 @@ pub fn uppercase(s: String) -> String {
 }
 
 /// Remove HTML tags using a simple char-by-char state machine.
+///
+/// This is cosmetic stripping only — **not** a security sanitizer.
+/// HTML entities (e.g. `&amp;`) pass through unchanged, and unclosed tags
+/// will swallow all content after the opening `<`.
 pub fn strip_html(s: String) -> String {
     let mut out = String::with_capacity(s.len());
     let mut inside_tag = false;
@@ -60,10 +64,11 @@ pub fn truncate(s: String, max_chars: usize) -> String {
     }
 }
 
-/// Normalize an email address by stripping the `+tag` from the local part.
-/// `user+tag@example.com` becomes `user@example.com`.
-/// Returns the string unchanged if there is no `@` or no `+` in the local part.
+/// Normalize an email address by lowercasing and stripping the `+tag` from the local part.
+/// `"User+Tag@Example.COM"` becomes `"user@example.com"`.
+/// Returns the lowercased string unchanged if there is no `@` or no `+` in the local part.
 pub fn normalize_email(s: String) -> String {
+    let s = s.to_lowercase();
     let Some(at) = s.find('@') else {
         return s;
     };

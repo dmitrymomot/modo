@@ -40,7 +40,7 @@ pub fn error_handler(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Derive macro for struct field sanitization via `#[sanitize(...)]` attributes.
+/// Derive macro for struct field sanitization via `#[clean(...)]` attributes.
 #[proc_macro_derive(Sanitize, attributes(clean))]
 pub fn derive_sanitize(input: TokenStream) -> TokenStream {
     sanitize::expand(input.into())
