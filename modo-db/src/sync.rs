@@ -1,0 +1,153 @@
+use crate::entity::EntityRegistration;
+use crate::migration::MigrationRegistration;
+use crate::pool::DbPool;
+use sea_orm::ConnectionTrait;
+use tracing::info;
+
+/// Synchronize database schema from registered entities, then run pending migrations.
+///
+/// 1. Bootstrap `_modo_migrations` table (must exist before schema sync)
+/// 2. Collect all `EntityRegistration` entries from `inventory`
+/// 3. Create tables (IF NOT EXISTS) — framework entities first, then user entities
+/// 4. Execute extra SQL (composite indices, partial unique indices)
+/// 5. Run pending migrations (version-ordered, tracked in `_modo_migrations`)
+pub async fn sync_and_migrate(db: &DbPool) -> Result<(), modo::Error> {
+    let conn = db.connection();
+    let backend = conn.get_database_backend();
+
+    // 1. Bootstrap _modo_migrations
+    conn.execute_unprepared(
+        "CREATE TABLE IF NOT EXISTS _modo_migrations (\
+            version INTEGER PRIMARY KEY, \
+            description TEXT NOT NULL, \
+            executed_at TEXT NOT NULL DEFAULT (datetime('now'))\
+        )",
+    )
+    .await
+    .map_err(|e| modo::Error::internal(format!("Failed to bootstrap migrations table: {e}")))?;
+
+    // 2. Create tables — framework entities first, then user entities
+    for reg in inventory::iter::<EntityRegistration> {
+        if reg.is_framework {
+            create_table(conn, backend, reg).await?;
+        }
+    }
+    for reg in inventory::iter::<EntityRegistration> {
+        if !reg.is_framework {
+            create_table(conn, backend, reg).await?;
+        }
+    }
+    info!("Schema sync complete");
+
+    // 3. Run extra SQL
+    for reg in inventory::iter::<EntityRegistration> {
+        for sql in reg.extra_sql {
+            if let Err(e) = conn.execute_unprepared(sql).await {
+                tracing::error!(
+                    table = reg.table_name,
+                    sql = sql,
+                    error = %e,
+                    "Failed to execute extra SQL for entity"
+                );
+                return Err(modo::Error::internal(format!(
+                    "Extra SQL for {} failed: {e}",
+                    reg.table_name
+                )));
+            }
+        }
+    }
+
+    // 4. Run pending migrations
+    run_pending_migrations(conn).await?;
+
+    Ok(())
+}
+
+async fn create_table(
+    conn: &sea_orm::DatabaseConnection,
+    backend: sea_orm::DbBackend,
+    reg: &EntityRegistration,
+) -> Result<(), modo::Error> {
+    use sea_orm::sea_query::TableCreateStatement;
+
+    let mut stmt: TableCreateStatement = (reg.create_table)(backend);
+    stmt.if_not_exists();
+    let built = backend.build(&stmt);
+    conn.execute(built)
+        .await
+        .map_err(|e| modo::Error::internal(format!("Schema sync for {} failed: {e}", reg.table_name)))?;
+    Ok(())
+}
+
+async fn run_pending_migrations(
+    db: &sea_orm::DatabaseConnection,
+) -> Result<(), modo::Error> {
+    use crate::migration::migration_entity;
+    use sea_orm::EntityTrait;
+    use std::collections::HashSet;
+
+    let mut migrations: Vec<&MigrationRegistration> =
+        inventory::iter::<MigrationRegistration>
+            .into_iter()
+            .collect();
+
+    if migrations.is_empty() {
+        return Ok(());
+    }
+
+    // Check for duplicate versions
+    let mut seen = HashSet::new();
+    for m in &migrations {
+        if !seen.insert(m.version) {
+            return Err(modo::Error::internal(format!(
+                "Duplicate migration version: {}",
+                m.version
+            )));
+        }
+    }
+
+    migrations.sort_by_key(|m| m.version);
+
+    // Query already-executed versions
+    let executed: Vec<migration_entity::Model> =
+        migration_entity::Entity::find()
+            .all(db)
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to query migrations: {e}")))?;
+    let executed_versions: HashSet<u64> =
+        executed.iter().map(|m| m.version as u64).collect();
+
+    // Run pending
+    for migration in &migrations {
+        if executed_versions.contains(&migration.version) {
+            continue;
+        }
+        info!(
+            "Running migration v{}: {}",
+            migration.version, migration.description
+        );
+
+        (migration.handler)(db).await?;
+
+        // Record migration as executed
+        let version_i64 = i64::try_from(migration.version).map_err(|_| {
+            modo::Error::internal(format!(
+                "Migration version {} exceeds maximum ({})",
+                migration.version,
+                i64::MAX
+            ))
+        })?;
+        let record = migration_entity::ActiveModel {
+            version: sea_orm::Set(version_i64),
+            description: sea_orm::Set(migration.description.to_string()),
+            executed_at: sea_orm::Set(chrono::Utc::now().to_rfc3339()),
+        };
+        migration_entity::Entity::insert(record)
+            .exec(db)
+            .await
+            .map_err(|e| modo::Error::internal(format!("Failed to record migration: {e}")))?;
+        info!("Migration v{} complete", migration.version);
+    }
+
+    Ok(())
+}

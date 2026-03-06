@@ -1,0 +1,32 @@
+[package]
+name = "modo-db"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+
+[features]
+default = ["sqlite"]
+sqlite = ["sea-orm/sqlx-sqlite"]
+postgres = ["sea-orm/sqlx-postgres"]
+
+[dependencies]
+modo = { path = "../modo" }
+modo-db-macros = { path = "../modo-db-macros" }
+
+sea-orm = { version = "1", features = [
+    "runtime-tokio-native-tls",
+    "macros",
+] }
+
+inventory = "0.3"
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+ulid = "1"
+nanoid = "0.4"
+tracing = "0.1"
+thiserror = "2"
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+serde_yaml_ng = "0.10"

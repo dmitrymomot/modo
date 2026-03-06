@@ -1,0 +1,68 @@
+use crate::config::DatabaseConfig;
+use crate::pool::DbPool;
+use sea_orm::{ConnectOptions, Database};
+use tracing::info;
+
+/// Connect to the database using the provided configuration.
+///
+/// Auto-detects the backend from the URL scheme and applies
+/// backend-specific settings (SQLite pragmas, Postgres pool tuning).
+pub async fn connect(config: &DatabaseConfig) -> Result<DbPool, modo::Error> {
+    let mut opts = ConnectOptions::new(&config.url);
+    opts.max_connections(config.max_connections)
+        .min_connections(config.min_connections);
+
+    let conn = Database::connect(opts)
+        .await
+        .map_err(|e| modo::Error::internal(format!("Database connection failed: {e}")))?;
+
+    // Apply backend-specific settings
+    if config.url.starts_with("sqlite://") || config.url.starts_with("sqlite:") {
+        apply_sqlite_pragmas(&conn).await?;
+    }
+
+    info!(url = %redact_url(&config.url), "Database connected");
+    Ok(DbPool(conn))
+}
+
+#[cfg(feature = "sqlite")]
+async fn apply_sqlite_pragmas(
+    conn: &sea_orm::DatabaseConnection,
+) -> Result<(), modo::Error> {
+    use sea_orm::ConnectionTrait;
+
+    conn.execute_unprepared("PRAGMA journal_mode=WAL")
+        .await
+        .map_err(|e| modo::Error::internal(format!("Failed to set WAL mode: {e}")))?;
+    conn.execute_unprepared("PRAGMA busy_timeout=5000")
+        .await
+        .map_err(|e| modo::Error::internal(format!("Failed to set busy_timeout: {e}")))?;
+    conn.execute_unprepared("PRAGMA synchronous=NORMAL")
+        .await
+        .map_err(|e| modo::Error::internal(format!("Failed to set synchronous: {e}")))?;
+    conn.execute_unprepared("PRAGMA foreign_keys=ON")
+        .await
+        .map_err(|e| modo::Error::internal(format!("Failed to enable foreign_keys: {e}")))?;
+    Ok(())
+}
+
+#[cfg(not(feature = "sqlite"))]
+async fn apply_sqlite_pragmas(
+    _conn: &sea_orm::DatabaseConnection,
+) -> Result<(), modo::Error> {
+    Err(modo::Error::internal(
+        "SQLite URL provided but `sqlite` feature is not enabled",
+    ))
+}
+
+/// Redact credentials from database URL for logging.
+fn redact_url(url: &str) -> String {
+    if let Some(at_pos) = url.find('@') {
+        if let Some(scheme_end) = url.find("://") {
+            let prefix = &url[..scheme_end + 3];
+            let suffix = &url[at_pos..];
+            return format!("{prefix}***{suffix}");
+        }
+    }
+    url.to_string()
+}
