@@ -288,143 +288,6 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
         })
         .collect();
 
-    // Generate validation + construction
-    let validations_and_fields: Vec<TokenStream> = multipart_fields.iter().map(|f| {
-        let field_name = &f.field_name;
-        let var = quote::format_ident!("__{}", f.field_name);
-        let name_str = &f.multipart_name;
-
-        let mut stmts = Vec::new();
-
-        match &f.kind {
-            FieldKind::UploadedFile => {
-                stmts.push(quote! {
-                    let #var = #var.ok_or_else(|| {
-                        modo::validate::validation_error(vec![(#name_str, vec!["is required".into()])])
-                    })?;
-                });
-                // Upload validations
-                if let Some(max) = f.upload_attrs.max_size {
-                    let msg = format!("File exceeds maximum size of {}", format_size_for_codegen(max));
-                    stmts.push(quote! {
-                        if #var.size() > #max {
-                            return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                        }
-                    });
-                }
-                if let Some(ref accept) = f.upload_attrs.accept {
-                    let msg = format!("File type must match {accept}");
-                    stmts.push(quote! {
-                        if !modo_upload::__internal::mime_matches(#var.content_type(), #accept) {
-                            return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                        }
-                    });
-                }
-                stmts.push(quote! { #field_name: #var, });
-            }
-            FieldKind::OptionUploadedFile => {
-                // Upload validations on Some
-                if let Some(max) = f.upload_attrs.max_size {
-                    let msg = format!("File exceeds maximum size of {}", format_size_for_codegen(max));
-                    stmts.push(quote! {
-                        if let Some(ref __f) = #var {
-                            if __f.size() > #max {
-                                return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                            }
-                        }
-                    });
-                }
-                if let Some(ref accept) = f.upload_attrs.accept {
-                    let msg = format!("File type must match {accept}");
-                    stmts.push(quote! {
-                        if let Some(ref __f) = #var {
-                            if !modo_upload::__internal::mime_matches(__f.content_type(), #accept) {
-                                return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                            }
-                        }
-                    });
-                }
-                stmts.push(quote! { #field_name: #var, });
-            }
-            FieldKind::VecUploadedFile => {
-                if let Some(min) = f.upload_attrs.min_count {
-                    let msg = format!("At least {min} file(s) required");
-                    stmts.push(quote! {
-                        if #var.len() < #min {
-                            return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                        }
-                    });
-                }
-                if let Some(max) = f.upload_attrs.max_count {
-                    let msg = format!("At most {max} file(s) allowed");
-                    stmts.push(quote! {
-                        if #var.len() > #max {
-                            return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                        }
-                    });
-                }
-                // Validate each file
-                if let Some(max_size) = f.upload_attrs.max_size {
-                    let msg = format!("File exceeds maximum size of {}", format_size_for_codegen(max_size));
-                    stmts.push(quote! {
-                        for __f in &#var {
-                            if __f.size() > #max_size {
-                                return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                            }
-                        }
-                    });
-                }
-                if let Some(ref accept) = f.upload_attrs.accept {
-                    let msg = format!("File type must match {accept}");
-                    stmts.push(quote! {
-                        for __f in &#var {
-                            if !modo_upload::__internal::mime_matches(__f.content_type(), #accept) {
-                                return Err(modo::validate::validation_error(vec![(#name_str, vec![#msg.into()])]));
-                            }
-                        }
-                    });
-                }
-                stmts.push(quote! { #field_name: #var, });
-            }
-            FieldKind::UploadStream => {
-                stmts.push(quote! {
-                    let #var = #var.ok_or_else(|| {
-                        modo::validate::validation_error(vec![(#name_str, vec!["is required".into()])])
-                    })?;
-                });
-                stmts.push(quote! { #field_name: #var, });
-            }
-            FieldKind::String => {
-                stmts.push(quote! {
-                    let #var = #var.ok_or_else(|| {
-                        modo::validate::validation_error(vec![(#name_str, vec!["is required".into()])])
-                    })?;
-                });
-                stmts.push(quote! { #field_name: #var, });
-            }
-            FieldKind::OptionString => {
-                stmts.push(quote! { #field_name: #var, });
-            }
-            FieldKind::FromStr => {
-                stmts.push(quote! {
-                    let #var = #var.ok_or_else(|| {
-                        modo::validate::validation_error(vec![(#name_str, vec!["is required".into()])])
-                    })?;
-                    let #var = #var.parse().map_err(|_| {
-                        modo::validate::validation_error(vec![(#name_str, vec![format!("invalid value")])])
-                    })?;
-                });
-                stmts.push(quote! { #field_name: #var, });
-            }
-        }
-
-        quote! { #(#stmts)* }
-    }).collect();
-
-    // Split into validation stmts and field assignments
-    // Actually, we need to separate the let-bindings from the struct fields.
-    // Let me restructure: collect validations and field assignments separately.
-
     let mut validation_stmts = Vec::new();
     let mut field_assignments = Vec::new();
 
@@ -551,10 +414,10 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
             FieldKind::FromStr => {
                 let var2 = quote::format_ident!("__{}_parsed", f.field_name);
                 validation_stmts.push(quote! {
-                    let __raw = #var.ok_or_else(|| {
+                    let #var = #var.ok_or_else(|| {
                         modo::validate::validation_error(vec![(#name_str, vec!["is required".into()])])
                     })?;
-                    let #var2 = __raw.parse().map_err(|_| {
+                    let #var2 = #var.parse().map_err(|_| {
                         modo::validate::validation_error(vec![(#name_str, vec!["invalid value".into()])])
                     })?;
                 });
@@ -564,9 +427,6 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
     }
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-
-    // Drop the duplicated validations_and_fields approach — use separated stmts.
-    let _ = validations_and_fields;
 
     Ok(quote! {
         #[modo_upload::__internal::async_trait]
