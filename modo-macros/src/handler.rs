@@ -1,7 +1,7 @@
 use crate::middleware::{MiddlewareList, gen_handler_middleware_wrapper};
 use proc_macro2::TokenStream;
-use quote::quote;
-use syn::{Ident, ItemFn, LitStr, Result, Token, parse2};
+use quote::{format_ident, quote};
+use syn::{FnArg, Ident, ItemFn, LitStr, Pat, Result, Token, Type, parse2};
 
 struct HandlerArgs {
     method: Ident,
@@ -35,13 +35,130 @@ impl syn::parse::Parse for HandlerArgs {
     }
 }
 
+/// Extract `{name}` path parameters from a route path string.
+fn extract_path_params(path: &str) -> Vec<String> {
+    let mut params = Vec::new();
+    for segment in path.split('/') {
+        if let Some(inner) = segment.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+            let name = inner.strip_prefix('*').unwrap_or(inner);
+            if !name.is_empty() {
+                params.push(name.to_string());
+            }
+        }
+    }
+    params
+}
+
+struct PathParamInfo {
+    sig_index: usize,
+    ident: Ident,
+    ty: Type,
+}
+
+/// Find function parameters that match path parameter names.
+fn collect_path_params(func: &ItemFn, path_params: &[String]) -> Vec<PathParamInfo> {
+    let mut matched = Vec::new();
+    for (i, arg) in func.sig.inputs.iter().enumerate() {
+        if let FnArg::Typed(pat_type) = arg
+            && let Pat::Ident(pat_ident) = &*pat_type.pat
+        {
+            let name = pat_ident.ident.to_string();
+            if path_params.contains(&name) {
+                matched.push(PathParamInfo {
+                    sig_index: i,
+                    ident: pat_ident.ident.clone(),
+                    ty: (*pat_type.ty).clone(),
+                });
+            }
+        }
+    }
+    matched
+}
+
+/// Generate a deserializable struct for path params and rewrite the function signature.
+fn transform_path_params(
+    func_name: &Ident,
+    func: &mut ItemFn,
+    path_params: &[String],
+    matched: &[PathParamInfo],
+) -> TokenStream {
+    let struct_name = format_ident!("__{func_name}PathParams", func_name = func_name);
+
+    // Build struct fields: declared params use their type, undeclared default to String
+    let declared: std::collections::HashMap<&str, &Type> = matched
+        .iter()
+        .map(|m| (m.ident.to_string().as_str().to_owned(), &m.ty))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|(name, ty)| (Box::leak(name.into_boxed_str()) as &str, ty))
+        .collect();
+
+    let struct_fields: Vec<TokenStream> = path_params
+        .iter()
+        .map(|name| {
+            let ident = format_ident!("{}", name);
+            if let Some(ty) = declared.get(name.as_str()) {
+                quote! { #ident: #ty }
+            } else {
+                quote! { #ident: String }
+            }
+        })
+        .collect();
+
+    let struct_def = quote! {
+        #[allow(non_camel_case_types, dead_code)]
+        #[derive(modo::serde::Deserialize)]
+        #[serde(crate = "modo::serde")]
+        struct #struct_name {
+            #(#struct_fields),*
+        }
+    };
+
+    // Remove matched params from function signature (in reverse order to preserve indices)
+    let mut indices: Vec<usize> = matched.iter().map(|m| m.sig_index).collect();
+    indices.sort_unstable();
+    indices.reverse();
+    for idx in indices {
+        func.sig.inputs = func
+            .sig
+            .inputs
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != idx)
+            .map(|(_, arg)| arg.clone())
+            .collect();
+    }
+
+    // Build destructuring pattern with only declared fields + `..`
+    let field_idents: Vec<&Ident> = matched.iter().map(|m| &m.ident).collect();
+    let path_extractor: syn::FnArg = syn::parse_quote! {
+        modo::axum::extract::Path(#struct_name { #(#field_idents),*, .. }):
+            modo::axum::extract::Path<#struct_name>
+    };
+
+    // Insert the Path extractor at position 0
+    func.sig.inputs.insert(0, path_extractor);
+
+    struct_def
+}
+
 pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let args: HandlerArgs = parse2(attr)?;
     let mut func: ItemFn = parse2(item)?;
 
-    let func_name = &func.sig.ident;
+    let func_name = func.sig.ident.clone();
     let method_ident = &args.method;
     let path = &args.path;
+
+    // Auto-extract path parameters from route path
+    let path_params = extract_path_params(&args.path.value());
+    let mut path_struct_def = quote! {};
+    if !path_params.is_empty() {
+        let matched = collect_path_params(&func, &path_params);
+        if !matched.is_empty() {
+            path_struct_def = transform_path_params(&func_name, &mut func, &path_params, &matched);
+        }
+    }
 
     let method_str = method_ident.to_string().to_uppercase();
     let modo_method = match method_str.as_str() {
@@ -91,7 +208,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let mut wrapper_defs = Vec::new();
     let mut wrapper_names = Vec::new();
     for (i, mw_attr) in middleware_attrs.iter().enumerate() {
-        let (name, def) = gen_handler_middleware_wrapper(func_name, i, mw_attr);
+        let (name, def) = gen_handler_middleware_wrapper(&func_name, i, mw_attr);
         wrapper_names.push(name);
         wrapper_defs.push(def);
     }
@@ -108,6 +225,8 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     };
 
     Ok(quote! {
+        #path_struct_def
+
         #func
 
         #(#wrapper_defs)*
