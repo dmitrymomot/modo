@@ -182,6 +182,8 @@ pub struct ServerConfig {
     pub http: HttpConfig,
     pub security_headers: SecurityHeadersConfig,
     pub rate_limit: Option<RateLimitConfig>,
+    #[serde(skip)]
+    pub environment: Environment,
 }
 
 impl Default for ServerConfig {
@@ -199,6 +201,7 @@ impl Default for ServerConfig {
             http: HttpConfig::default(),
             security_headers: SecurityHeadersConfig::default(),
             rate_limit: None,
+            environment: Environment::Development,
         }
     }
 }

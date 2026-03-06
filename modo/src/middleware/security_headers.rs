@@ -1,5 +1,5 @@
 use crate::app::AppState;
-use crate::config::{SecurityHeadersConfig, detect_env};
+use crate::config::{Environment, SecurityHeadersConfig};
 use axum::extract::State;
 use axum::http::Request;
 use axum::middleware::Next;
@@ -15,11 +15,15 @@ pub async fn security_headers_middleware(
     if !config.enabled {
         return response;
     }
-    apply_headers(response.headers_mut(), config);
+    apply_headers(response.headers_mut(), config, &state.server_config.environment);
     response
 }
 
-fn apply_headers(headers: &mut axum::http::HeaderMap, config: &SecurityHeadersConfig) {
+fn apply_headers(
+    headers: &mut axum::http::HeaderMap,
+    config: &SecurityHeadersConfig,
+    env: &Environment,
+) {
     if let Some(ref val) = config.x_content_type_options {
         set_header(headers, "x-content-type-options", val);
     }
@@ -36,12 +40,9 @@ fn apply_headers(headers: &mut axum::http::HeaderMap, config: &SecurityHeadersCo
         set_header(headers, "content-security-policy", val);
     }
     // HSTS only in production
-    if config.hsts {
-        let env = detect_env();
-        if env == crate::config::Environment::Production {
-            let val = format!("max-age={}; includeSubDomains", config.hsts_max_age);
-            set_header(headers, "strict-transport-security", &val);
-        }
+    if config.hsts && *env == Environment::Production {
+        let val = format!("max-age={}; includeSubDomains", config.hsts_max_age);
+        set_header(headers, "strict-transport-security", &val);
     }
 }
 
@@ -62,7 +63,7 @@ mod tests {
     fn test_default_headers_applied() {
         let config = SecurityHeadersConfig::default();
         let mut headers = axum::http::HeaderMap::new();
-        apply_headers(&mut headers, &config);
+        apply_headers(&mut headers, &config, &Environment::Development);
         assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
         assert_eq!(headers.get("x-frame-options").unwrap(), "DENY");
         assert_eq!(
@@ -87,7 +88,7 @@ mod tests {
         // When disabled, apply_headers still adds them but the middleware short-circuits
         // Testing the middleware behavior indirectly:
         if config.enabled {
-            apply_headers(&mut headers, &config);
+            apply_headers(&mut headers, &config, &Environment::Development);
         }
         assert!(headers.is_empty());
     }

@@ -235,6 +235,8 @@ impl AppBuilder {
             server_config.http.maintenance = m;
         }
 
+        server_config.environment = crate::config::detect_env();
+
         let http_config = &server_config.http;
 
         let cookie_key = if server_config.secret_key.is_empty() {
