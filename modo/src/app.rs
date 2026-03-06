@@ -1,6 +1,7 @@
 use crate::config::{
     HttpConfig, RateLimitConfig, SecurityHeadersConfig, ServerConfig, TrailingSlash, parse_size,
 };
+use crate::error::HttpError;
 use crate::cors::CorsConfig;
 use crate::health::{self, ReadinessCheck};
 use crate::logging;
@@ -329,6 +330,9 @@ impl AppBuilder {
                 router = router.merge(sub_router);
             }
         }
+
+        // Fallback for unmatched routes — returns a proper JSON 404
+        router = router.fallback(|| async { HttpError::NotFound.into_response() });
 
         // =====================================================================
         // Middleware stack (applied bottom-up; last .layer() call = outermost)

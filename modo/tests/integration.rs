@@ -17,6 +17,8 @@ async fn test_error() -> Result<&'static str, HttpError> {
 }
 
 fn build_test_router() -> axum::Router {
+    use axum::response::IntoResponse;
+
     let state = AppState {
         services: Default::default(),
         server_config: ServerConfig::default(),
@@ -30,7 +32,9 @@ fn build_test_router() -> axum::Router {
             router = router.route(reg.path, method_router);
         }
     }
-    router.with_state(state)
+    router
+        .fallback(|| async { HttpError::NotFound.into_response() })
+        .with_state(state)
 }
 
 #[tokio::test]
@@ -90,4 +94,11 @@ async fn test_unknown_route_returns_404() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["status"], 404);
+    assert_eq!(json["error"], "not_found");
 }
