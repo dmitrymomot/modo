@@ -1,14 +1,17 @@
 pub mod config;
+pub(crate) mod cron;
 pub mod entity;
 pub mod extractor;
 pub mod handler;
 pub mod queue;
+pub mod runner;
 pub mod types;
 
 // Public API
 pub use config::{CleanupConfig, JobsConfig, QueueConfig};
 pub use handler::{JobContext, JobHandler, JobHandlerDyn, JobRegistration};
 pub use queue::JobQueue;
+pub use runner::{JobsHandle, start};
 pub use types::{JobId, JobState};
 
 // Re-export proc macros
