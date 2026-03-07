@@ -1,4 +1,3 @@
-use crate::config::SessionConfig;
 use crate::meta::{SessionMeta, extract_client_ip, header_str};
 use crate::store::SessionStore;
 use crate::types::{SessionData, SessionToken};
@@ -23,7 +22,6 @@ pub(crate) enum SessionAction {
 
 pub(crate) struct SessionManagerState {
     pub store: SessionStore,
-    pub config: SessionConfig,
     pub current_session: Mutex<Option<SessionData>>,
     pub meta: SessionMeta,
     pub action: Mutex<SessionAction>,
@@ -146,7 +144,6 @@ where
             // Build shared state for SessionManager
             let manager_state = Arc::new(SessionManagerState {
                 store: (*store).clone(),
-                config: config.clone(),
                 current_session: Mutex::new(current_session.clone()),
                 meta,
                 action: Mutex::new(SessionAction::None),
