@@ -86,10 +86,14 @@ Refactor strategy:
 - Cancel: `queue.cancel(&job_id).await?` — sets state to `cancelled` (distinct from `dead`)
 - Entity: `modo_jobs` table with `is_framework: true` — auto-created by `sync_and_migrate`
 - Job states: `pending`, `running`, `completed`, `dead`, `cancelled` (no `failed` state)
-- Retry backoff: `5s * 2^(attempt-1)`, capped at 1h
+- Retry backoff: `5s * 2^(attempt-1)`, capped at 1h (uses saturating arithmetic, safe for any attempt count)
 - Stale reaper: resets stuck `running` jobs older than `stale_threshold_secs` back to `pending`, decrements attempts
 - Cleanup: auto-purges `completed`/`dead`/`cancelled` jobs older than `retention_secs`
 - Shutdown: `jobs.shutdown().await` — signals cancel + waits up to `drain_timeout_secs` for in-flight jobs
+- Error persistence: `last_error` column stores failure/timeout messages on retry and dead jobs
+- Config validation: `start()` validates config (rejects zero poll_interval, concurrency, stale_threshold, cleanup interval, empty queues)
+- Payload size limit: optional `max_payload_bytes` in `JobsConfig` (default: None = unlimited)
+- Cron jobs: handler runs inline (no concurrent firings of same cron job); if execution exceeds interval, next tick is skipped
 - Cron failures: consecutive failure counter warns after 5 failures in a row
 - Design doc: `docs/plans/2026-03-07-modo-jobs-design.md`
 
@@ -127,3 +131,6 @@ Refactor strategy:
 - Re-exports in `modo/src/lib.rs` must be alphabetically sorted (`cargo fmt` enforces this)
 - `modo-jobs` entity module is named `job` (from `struct Job`); use `use modo_jobs::entity::job as jobs_entity;` in tests to avoid shadowing
 - `inventory` registration from library crates may not link in tests — force with `use modo_jobs::entity::job as _;`
+- `#[job]` macro validates: must be async, only one payload parameter allowed
+- SeaORM's `ExprTrait` conflicts with `Ord::max`/`Ord::min` — disambiguate with `Ord::max(a, b)` syntax
+- `JobQueue` extractor looks up `JobsHandle` in services (not `JobQueue` directly) — register `JobsHandle` as service
