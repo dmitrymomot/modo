@@ -17,9 +17,12 @@ pub(crate) async fn start_cron_jobs(
             continue;
         };
 
-        let schedule: cron::Schedule = cron_expr
-            .parse()
-            .unwrap_or_else(|e| panic!("Invalid cron expression '{}' for job '{}': {e}", cron_expr, reg.name));
+        let schedule: cron::Schedule = cron_expr.parse().unwrap_or_else(|e| {
+            panic!(
+                "Invalid cron expression '{}' for job '{}': {e}",
+                cron_expr, reg.name
+            )
+        });
 
         let cancel = cancel.clone();
         let services = services.clone();
@@ -29,8 +32,16 @@ pub(crate) async fn start_cron_jobs(
         let handler_factory = reg.handler_factory;
 
         tokio::spawn(async move {
-            run_cron_loop(cancel, services, db_pool, name, timeout_secs, handler_factory, schedule)
-                .await;
+            run_cron_loop(
+                cancel,
+                services,
+                db_pool,
+                name,
+                timeout_secs,
+                handler_factory,
+                schedule,
+            )
+            .await;
         });
 
         info!(job = reg.name, cron = cron_expr, "Scheduled cron job");
