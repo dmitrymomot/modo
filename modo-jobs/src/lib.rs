@@ -1,5 +1,6 @@
 pub mod config;
 pub mod entity;
+pub mod extractor;
 pub mod handler;
 pub mod queue;
 pub mod types;
