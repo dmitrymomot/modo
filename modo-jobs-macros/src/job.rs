@@ -192,6 +192,13 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let args: JobArgs = parse2(attr)?;
     let func: ItemFn = parse2(item)?;
 
+    if func.sig.asyncness.is_none() {
+        return Err(syn::Error::new_spanned(
+            func.sig.fn_token,
+            "#[job] handlers must be async functions",
+        ));
+    }
+
     let func_name = func.sig.ident.clone();
     let func_name_str = func_name.to_string();
     let impl_name = format_ident!("__job_{}_impl", func_name);
@@ -222,6 +229,13 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         match classify_param(arg)? {
             Some(ParamKind::Payload(ty)) => {
+                if payload_type.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        pat_type,
+                        "job functions can only have one payload parameter; \
+                         use Service<T> or Db for additional dependencies",
+                    ));
+                }
                 payload_type = Some(ty.clone());
                 setup_stmts.push(quote! {
                     let #param_pat: #ty = ctx.payload()?;
