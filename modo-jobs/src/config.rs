@@ -15,6 +15,31 @@ pub struct JobsConfig {
     pub queues: Vec<QueueConfig>,
     /// Auto-cleanup configuration for finished jobs.
     pub cleanup: CleanupConfig,
+    /// Optional maximum payload size in bytes. None = unlimited.
+    pub max_payload_bytes: Option<usize>,
+}
+
+impl JobsConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.poll_interval_secs == 0 {
+            return Err("poll_interval_secs must be > 0".into());
+        }
+        if self.stale_threshold_secs == 0 {
+            return Err("stale_threshold_secs must be > 0".into());
+        }
+        if self.queues.is_empty() {
+            return Err("at least one queue must be configured".into());
+        }
+        for q in &self.queues {
+            if q.concurrency == 0 {
+                return Err(format!("queue '{}': concurrency must be > 0", q.name));
+            }
+        }
+        if self.cleanup.interval_secs == 0 {
+            return Err("cleanup.interval_secs must be > 0".into());
+        }
+        Ok(())
+    }
 }
 
 impl Default for JobsConfig {
@@ -28,6 +53,7 @@ impl Default for JobsConfig {
                 concurrency: 4,
             }],
             cleanup: CleanupConfig::default(),
+            max_payload_bytes: None,
         }
     }
 }
