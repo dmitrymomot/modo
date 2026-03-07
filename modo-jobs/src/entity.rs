@@ -16,4 +16,6 @@ pub struct Job {
     pub timeout_secs: i32,
     pub locked_by: Option<String>,
     pub locked_at: Option<modo_db::chrono::DateTime<modo_db::chrono::Utc>>,
+    #[entity(column_type = "Text")]
+    pub last_error: Option<String>,
 }

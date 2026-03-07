@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 /// Implements `Deref<Target = JobQueue>` for easy access to enqueue/cancel.
 #[derive(Clone)]
 pub struct JobsHandle {
-    queue: JobQueue,
+    pub(crate) queue: JobQueue,
     cancel: CancellationToken,
     semaphores: Vec<(Arc<Semaphore>, usize)>,
     drain_timeout_secs: u64,
@@ -79,6 +79,10 @@ pub async fn start(
     config: &JobsConfig,
     services: ServiceRegistry,
 ) -> Result<JobsHandle, modo::Error> {
+    config
+        .validate()
+        .map_err(|e| modo::Error::internal(format!("Invalid jobs config: {e}")))?;
+
     // Validate queue config against registered jobs
     let queue_names: HashMap<&str, usize> = config
         .queues
@@ -101,7 +105,7 @@ pub async fn start(
     }
 
     let cancel = CancellationToken::new();
-    let queue = JobQueue::new(db);
+    let queue = JobQueue::new(db, config.max_payload_bytes);
     let worker_id = ulid::Ulid::new().to_string();
     let mut semaphores = Vec::new();
 
@@ -313,7 +317,7 @@ async fn execute_job(
             job_name = %job_name,
             "No handler registered for job"
         );
-        mark_dead(db, &job.id).await;
+        mark_dead(db, &job.id, Some("No handler registered for job")).await;
         return;
     };
 
@@ -336,6 +340,7 @@ async fn execute_job(
             mark_completed(db, &job.id).await;
         }
         Ok(Err(e)) => {
+            let error_msg = e.to_string();
             error!(
                 job_id = %job_id,
                 job_name = %job_name,
@@ -345,9 +350,10 @@ async fn execute_job(
                 error = %e,
                 "Job failed"
             );
-            handle_failure(db, &job).await;
+            handle_failure(db, &job, Some(&error_msg)).await;
         }
         Err(_) => {
+            let error_msg = format!("Job timed out after {timeout_secs}s");
             error!(
                 job_id = %job_id,
                 job_name = %job_name,
@@ -356,17 +362,21 @@ async fn execute_job(
                 max_attempts = max_attempts,
                 "Job timed out"
             );
-            handle_failure(db, &job).await;
+            handle_failure(db, &job, Some(&error_msg)).await;
         }
     }
 }
 
 #[doc(hidden)]
-pub async fn handle_failure(db: &modo_db::sea_orm::DatabaseConnection, job: &job::Model) {
+pub async fn handle_failure(
+    db: &modo_db::sea_orm::DatabaseConnection,
+    job: &job::Model,
+    error_msg: Option<&str>,
+) {
     if job.attempts < job.max_attempts {
-        schedule_retry(db, job).await;
+        schedule_retry(db, job, error_msg).await;
     } else {
-        mark_dead(db, &job.id).await;
+        mark_dead(db, &job.id, error_msg).await;
     }
 }
 
@@ -380,6 +390,14 @@ pub async fn mark_completed(db: &modo_db::sea_orm::DatabaseConnection, id: &str)
             modo_db::sea_orm::sea_query::Expr::value(JobState::Completed.as_str()),
         )
         .col_expr(
+            job::Column::LockedBy,
+            modo_db::sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .col_expr(
+            job::Column::LockedAt,
+            modo_db::sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::Utc>>::None),
+        )
+        .col_expr(
             job::Column::UpdatedAt,
             modo_db::sea_orm::sea_query::Expr::value(now),
         )
@@ -391,10 +409,18 @@ pub async fn mark_completed(db: &modo_db::sea_orm::DatabaseConnection, id: &str)
 }
 
 #[doc(hidden)]
-pub async fn schedule_retry(db: &modo_db::sea_orm::DatabaseConnection, job: &job::Model) {
+pub async fn schedule_retry(
+    db: &modo_db::sea_orm::DatabaseConnection,
+    job: &job::Model,
+    error_msg: Option<&str>,
+) {
     let now = Utc::now();
     // Exponential backoff: 5s * 2^(attempt-1), capped at 1h
-    let backoff_secs = std::cmp::min(5u64 * 2u64.pow((job.attempts - 1) as u32), 3600);
+    let exp = Ord::max(job.attempts - 1, 0) as u32;
+    let backoff_secs = Ord::min(
+        5u64.saturating_mul(1u64.checked_shl(exp).unwrap_or(u64::MAX)),
+        3600,
+    );
     let next_run = now + chrono::Duration::seconds(backoff_secs as i64);
 
     if let Err(e) = job::Entity::update_many()
@@ -416,6 +442,10 @@ pub async fn schedule_retry(db: &modo_db::sea_orm::DatabaseConnection, job: &job
             modo_db::sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::Utc>>::None),
         )
         .col_expr(
+            job::Column::LastError,
+            modo_db::sea_orm::sea_query::Expr::value(error_msg.map(|s| s.to_string())),
+        )
+        .col_expr(
             job::Column::UpdatedAt,
             modo_db::sea_orm::sea_query::Expr::value(now),
         )
@@ -427,13 +457,29 @@ pub async fn schedule_retry(db: &modo_db::sea_orm::DatabaseConnection, job: &job
 }
 
 #[doc(hidden)]
-pub async fn mark_dead(db: &modo_db::sea_orm::DatabaseConnection, id: &str) {
+pub async fn mark_dead(
+    db: &modo_db::sea_orm::DatabaseConnection,
+    id: &str,
+    error_msg: Option<&str>,
+) {
     let now = Utc::now();
     if let Err(e) = job::Entity::update_many()
         .filter(job::Column::Id.eq(id))
         .col_expr(
             job::Column::State,
             modo_db::sea_orm::sea_query::Expr::value(JobState::Dead.as_str()),
+        )
+        .col_expr(
+            job::Column::LockedBy,
+            modo_db::sea_orm::sea_query::Expr::value(Option::<String>::None),
+        )
+        .col_expr(
+            job::Column::LockedAt,
+            modo_db::sea_orm::sea_query::Expr::value(Option::<chrono::DateTime<chrono::Utc>>::None),
+        )
+        .col_expr(
+            job::Column::LastError,
+            modo_db::sea_orm::sea_query::Expr::value(error_msg.map(|s| s.to_string())),
         )
         .col_expr(
             job::Column::UpdatedAt,

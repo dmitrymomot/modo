@@ -42,6 +42,11 @@ pub(crate) async fn start_cron_jobs(cancel: CancellationToken, services: Service
     }
 }
 
+/// Run a single cron job's scheduling loop.
+///
+/// The handler is awaited inline — if execution takes longer than the interval
+/// between ticks, the next tick is skipped rather than firing concurrently.
+/// At most one instance of each cron job runs at a time.
 async fn run_cron_loop(
     cancel: CancellationToken,
     services: ServiceRegistry,

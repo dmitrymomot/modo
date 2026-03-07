@@ -11,12 +11,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct JobQueue {
     pub(crate) db: Arc<modo_db::sea_orm::DatabaseConnection>,
+    pub(crate) max_payload_bytes: Option<usize>,
 }
 
 impl JobQueue {
-    pub fn new(db: &modo_db::pool::DbPool) -> Self {
+    pub fn new(db: &modo_db::pool::DbPool, max_payload_bytes: Option<usize>) -> Self {
         Self {
             db: Arc::new(db.connection().clone()),
+            max_payload_bytes,
         }
     }
 
@@ -43,6 +45,15 @@ impl JobQueue {
 
         let payload_json = serde_json::to_string(payload)
             .map_err(|e| modo::Error::internal(format!("Failed to serialize job payload: {e}")))?;
+
+        if let Some(max) = self.max_payload_bytes
+            && payload_json.len() > max
+        {
+            return Err(modo::Error::internal(format!(
+                "Job payload size ({} bytes) exceeds limit ({max} bytes)",
+                payload_json.len()
+            )));
+        }
 
         self.insert_job(reg, payload_json, run_at).await
     }
@@ -97,6 +108,7 @@ impl JobQueue {
             timeout_secs: ActiveValue::Set(reg.timeout_secs.min(i32::MAX as u64) as i32),
             locked_by: ActiveValue::Set(None),
             locked_at: ActiveValue::Set(None),
+            last_error: ActiveValue::Set(None),
             created_at: ActiveValue::Set(Utc::now()),
             updated_at: ActiveValue::Set(Utc::now()),
         };
