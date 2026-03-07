@@ -41,6 +41,7 @@ async fn test_insert_and_query_job() {
         timeout_secs: ActiveValue::Set(300),
         locked_by: ActiveValue::Set(None),
         locked_at: ActiveValue::Set(None),
+        last_error: ActiveValue::Set(None),
         created_at: ActiveValue::Set(now),
         updated_at: ActiveValue::Set(now),
     };
@@ -81,6 +82,7 @@ async fn test_cancel_pending_job() {
         timeout_secs: ActiveValue::Set(300),
         locked_by: ActiveValue::Set(None),
         locked_at: ActiveValue::Set(None),
+        last_error: ActiveValue::Set(None),
         created_at: ActiveValue::Set(now),
         updated_at: ActiveValue::Set(now),
     };

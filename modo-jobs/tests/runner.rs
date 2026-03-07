@@ -45,6 +45,7 @@ async fn insert_job(
         timeout_secs: ActiveValue::Set(300),
         locked_by: ActiveValue::Set(None),
         locked_at: ActiveValue::Set(None),
+        last_error: ActiveValue::Set(None),
         created_at: ActiveValue::Set(now),
         updated_at: ActiveValue::Set(now),
     };
@@ -127,6 +128,8 @@ async fn test_mark_completed() {
         .expect("Job not found");
 
     assert_eq!(job.state, "completed");
+    assert!(job.locked_by.is_none(), "locked_by should be cleared");
+    assert!(job.locked_at.is_none(), "locked_at should be cleared");
 }
 
 #[tokio::test]
@@ -143,7 +146,7 @@ async fn test_schedule_retry_sets_pending_with_future_run_at() {
         .expect("Expected a job");
 
     // Mark failed (retry)
-    runner::schedule_retry(&db, &claimed).await;
+    runner::schedule_retry(&db, &claimed, Some("test error")).await;
 
     let job = jobs_entity::Entity::find_by_id(id.as_str())
         .one(&db)
@@ -178,7 +181,7 @@ async fn test_handle_failure_marks_dead_after_max_attempts() {
     assert_eq!(claimed.max_attempts, 1);
 
     // handle_failure should mark dead since attempts >= max_attempts
-    runner::handle_failure(&db, &claimed).await;
+    runner::handle_failure(&db, &claimed, Some("test error")).await;
 
     let job = jobs_entity::Entity::find_by_id(id.as_str())
         .one(&db)
@@ -187,4 +190,30 @@ async fn test_handle_failure_marks_dead_after_max_attempts() {
         .expect("Job not found");
 
     assert_eq!(job.state, "dead");
+    assert_eq!(job.last_error.as_deref(), Some("test error"));
+    assert!(job.locked_by.is_none(), "locked_by should be cleared");
+    assert!(job.locked_at.is_none(), "locked_at should be cleared");
+}
+
+#[tokio::test]
+async fn test_schedule_retry_stores_last_error() {
+    let db = setup_db().await;
+    let id = JobId::new();
+    let now = chrono::Utc::now();
+    insert_job(&db, &id, "default", 0, now, 3).await;
+
+    let claimed = runner::claim_next(&db, "default", "worker-1")
+        .await
+        .expect("Claim failed")
+        .expect("Expected a job");
+
+    runner::schedule_retry(&db, &claimed, Some("connection timeout")).await;
+
+    let job = jobs_entity::Entity::find_by_id(id.as_str())
+        .one(&db)
+        .await
+        .expect("Query failed")
+        .expect("Job not found");
+
+    assert_eq!(job.last_error.as_deref(), Some("connection timeout"));
 }

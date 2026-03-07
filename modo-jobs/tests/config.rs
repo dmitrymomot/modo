@@ -1,3 +1,4 @@
+use modo_jobs::config::QueueConfig;
 use modo_jobs::{CleanupConfig, JobState, JobsConfig};
 
 #[test]
@@ -65,4 +66,82 @@ poll_interval_secs: 10
     assert_eq!(config.queues.len(), 1);
     assert_eq!(config.queues[0].name, "default");
     assert_eq!(config.cleanup.interval_secs, 3600);
+}
+
+#[test]
+fn test_default_config_validates() {
+    let config = JobsConfig::default();
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_validate_rejects_zero_poll_interval() {
+    let config = JobsConfig {
+        poll_interval_secs: 0,
+        ..Default::default()
+    };
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("poll_interval_secs")
+    );
+}
+
+#[test]
+fn test_validate_rejects_zero_stale_threshold() {
+    let config = JobsConfig {
+        stale_threshold_secs: 0,
+        ..Default::default()
+    };
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("stale_threshold_secs")
+    );
+}
+
+#[test]
+fn test_validate_rejects_empty_queues() {
+    let config = JobsConfig {
+        queues: vec![],
+        ..Default::default()
+    };
+    assert!(config.validate().unwrap_err().contains("queue"));
+}
+
+#[test]
+fn test_validate_rejects_zero_concurrency() {
+    let config = JobsConfig {
+        queues: vec![QueueConfig {
+            name: "test".to_string(),
+            concurrency: 0,
+        }],
+        ..Default::default()
+    };
+    assert!(config.validate().unwrap_err().contains("concurrency"));
+}
+
+#[test]
+fn test_validate_rejects_zero_cleanup_interval() {
+    let config = JobsConfig {
+        cleanup: CleanupConfig {
+            interval_secs: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("cleanup.interval_secs")
+    );
+}
+
+#[test]
+fn test_max_payload_bytes_default_is_none() {
+    let config = JobsConfig::default();
+    assert!(config.max_payload_bytes.is_none());
 }
