@@ -30,7 +30,7 @@ Refactor strategy:
 - `modo/` — core crate (HTTP, cookies, services — no DB)
 - `modo-macros/` — core proc macros
 - `modo-db/` — database layer (features: sqlite, postgres)
-- `modo-session/` — session management
+- `modo-session/` — session management (**implemented**)
 - `modo-auth/` — authentication
 - `modo-jobs/` — background jobs (**implemented**)
 - `modo-jobs-macros/` — `#[job(...)]` proc macro (**implemented**)
@@ -66,9 +66,9 @@ Refactor strategy:
 - Middleware: plain async functions, attached via `#[middleware(fn_name(params))]`
 - Middleware stacking order: Global (outermost) → Module → Handler (innermost)
 - Services: manually constructed, registered via `.service(instance)`
-- Sessions: `app.session_store(my_store)` to register, `SessionManager` in handlers
-- SessionManager: `authenticate()` / `logout()` / `logout_all()` / `logout_other()` / `rotate()` — handles cookies automatically
-- SessionManager data: `data()` / `get::<T>()` / `set()` / `update_data()` / `remove_key()` — immediate store writes
+- Sessions: `SessionStore::new(&db, config)` + `app.service(store.clone()).layer(modo_session::layer(store))`
+- SessionManager extractor: `authenticate()` / `logout()` / `logout_all()` / `logout_other()` / `revoke(id)` / `rotate()` — handles cookies automatically
+- SessionManager data: `get::<T>(key)` / `set(key, value)` / `remove_key(key)` — immediate store writes
 - Auth: implement `UserProvider` trait, use `Auth<User>` / `OptionalAuth<User>` extractors
 - Template context: `#[modo::context]` with `#[base]` + `#[user]` + `#[session]` fields
 - BaseContext: includes request_id, is_htmx, current_url, flash_messages, csrf_token, locale
@@ -97,6 +97,27 @@ Refactor strategy:
 - Cron failures: consecutive failure counter warns after 5 failures in a row
 - Design doc: `docs/plans/2026-03-07-modo-jobs-design.md`
 
+## Sessions (modo-session)
+
+- Store: `SessionStore::new(&db, config)` — concrete struct, no trait
+- Middleware: `app.layer(modo_session::layer(store))` — custom Tower Layer/Service
+- Extractor: `SessionManager` reads from request extensions (generic over any state)
+- SessionManager: `authenticate(user_id)` / `authenticate_with(user_id, data)` — destroy old session (fixation prevention), create new, set cookie
+- SessionManager: `logout()` / `logout_all()` / `logout_other()` — destroy sessions, remove cookie
+- SessionManager: `revoke(id)` — destroy specific session by ID (for "manage my devices" UI), scoped to current user
+- SessionManager: `rotate()` — new token, update cookie
+- SessionManager: `current()` / `user_id()` / `is_authenticated()` / `list_my_sessions()` — read session state
+- SessionManager: `get::<T>(key)` / `set(key, value)` / `remove_key(key)` — typed key-value on JSON data blob, immediate DB writes
+- Cookies: plain HttpOnly + SameSite=Lax + Secure (release) — no encryption; token SHA256 hash in DB provides security
+- Token: 32 random bytes, hex-encoded in cookie, SHA256 hash stored in DB (`token_hash` field)
+- Session limit: `max_sessions_per_user` (default 10) with FIFO eviction of oldest sessions
+- Fingerprint: SHA256(user_agent + accept_language + accept_encoding), validated on every request by default
+- Touch: updates `last_active_at` + extends `expires_at` when `touch_interval_secs` elapses (default 5min)
+- Entity: `modo_sessions` table, `is_framework: true`, auto-discovered via `#[modo_db::entity]`
+- Cleanup: `store.cleanup_expired()` manual, or `cleanup-job` feature for modo-jobs cron (every 15min)
+- Config: `SessionConfig` with `#[serde(default)]` — `session_ttl_secs`, `cookie_name`, `validate_fingerprint`, `touch_interval_secs`, `max_sessions_per_user`, `trusted_proxies`
+- Design doc: `docs/plans/2026-03-07-modo-session-design.md`
+
 ## Key Decisions
 
 - "Full magic" — proc macros for everything, auto-discovery, zero runtime cost
@@ -109,13 +130,13 @@ Refactor strategy:
 - `axum-extra` SignedCookieJar for all cookie ops
 - Use official documentation only when researching dependencies
 - Session IDs: ULID (no UUID anywhere)
-- Session cookies: PrivateCookieJar (AES-encrypted), store token (not session ID); token is rotatable
-- `SessionToken` newtype for cookie tokens (mirrors `SessionId`); use `SessionToken::generate()` not free functions
+- Session cookies: plain HttpOnly (not encrypted); token SHA256 hash in DB provides security layer
+- `SessionToken`: 32-byte random, hex in cookie, SHA256 hash in DB; `SessionToken::generate()` / `from_hex()` / `hash()`
 - Session fingerprint: SHA256(user_agent + accept_language + accept_encoding), configurable validation
 - Session touch: only updates last_active_at when touch_interval elapses (default 5min)
 - Session fingerprint uses `\x00` separator between hash inputs to prevent ambiguity
-- `SessionStore` and `SessionStoreDyn` must have identical method sets (10 methods each)
-- `cleanup_expired` lives on concrete store types, not in the trait
+- `SessionStore` is a concrete struct (no trait/`SessionStoreDyn`) wrapping `DbPool` + `SessionConfig`
+- `cleanup_expired` lives on `SessionStore`; optionally via modo-jobs cron with `cleanup-job` feature
 
 ## Gotchas
 
