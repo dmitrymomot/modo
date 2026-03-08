@@ -18,6 +18,11 @@ pub enum I18nError {
         lang: String,
         key: String,
     },
+    ReadError {
+        lang: String,
+        file: String,
+        source: std::io::Error,
+    },
 }
 
 impl fmt::Display for I18nError {
@@ -40,6 +45,9 @@ impl fmt::Display for I18nError {
                     f,
                     "i18n: plural entry '{key}' in '{lang}' missing required 'other' key"
                 )
+            }
+            Self::ReadError { lang, file, source } => {
+                write!(f, "i18n: failed to read {lang}/{file}: {source}")
             }
         }
     }

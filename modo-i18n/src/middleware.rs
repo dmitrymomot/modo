@@ -24,7 +24,7 @@ pub struct I18nLayer {
 
 /// Create an i18n middleware layer that resolves the user's locale per-request.
 ///
-/// Resolution chain: cookie -> query parameter -> Accept-Language header -> default.
+/// Resolution chain: query parameter -> cookie -> Accept-Language header -> default.
 ///
 /// The resolved locale is inserted into request extensions as [`ResolvedLang`]
 /// for downstream extractors (e.g., [`I18n`](crate::extractor::I18n)).
@@ -37,7 +37,7 @@ pub fn layer(store: Arc<TranslationStore>) -> I18nLayer {
 
 /// Create an i18n middleware layer with a custom locale source.
 ///
-/// Resolution chain: custom source -> cookie -> query parameter ->
+/// Resolution chain: custom source -> query parameter -> cookie ->
 /// Accept-Language header -> default.
 ///
 /// The custom source closure receives request parts (URI, headers, extensions)
@@ -103,40 +103,39 @@ where
             let (mut parts, body) = request.into_parts();
 
             // 1. Custom source
-            let lang = custom_source
+            let custom_lang = custom_source
                 .as_ref()
                 .and_then(|f| f(&parts))
                 .map(|v| normalize_lang(&v))
                 .filter(|v| available.contains(v));
 
-            // 2. Cookie
-            let lang = lang.or_else(|| {
-                read_cookie(&parts.headers, &config.cookie_name)
-                    .map(|v| normalize_lang(&v))
-                    .filter(|v| available.contains(v))
-            });
-
-            // 3. Query parameter
+            // 2. Query parameter (overrides cookie — allows explicit language switching)
             let query_lang = parts
                 .uri
                 .query()
                 .and_then(|q| extract_query_param(q, &config.query_param))
                 .map(|v| normalize_lang(&v))
                 .filter(|v| available.contains(v));
-            let should_set_cookie = query_lang.is_some() && lang.is_none();
-            let lang = lang.or(query_lang);
+
+            // 3. Cookie
+            let cookie_lang = read_cookie(&parts.headers, &config.cookie_name)
+                .map(|v| normalize_lang(&v))
+                .filter(|v| available.contains(v));
 
             // 4. Accept-Language header
-            let lang = lang.or_else(|| {
-                parts
-                    .headers
-                    .get(http::header::ACCEPT_LANGUAGE)
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| resolve_from_accept_language(v, available))
-            });
+            let accept_lang = parts
+                .headers
+                .get(http::header::ACCEPT_LANGUAGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| resolve_from_accept_language(v, available));
 
-            // 5. Default
-            let resolved = lang.unwrap_or_else(|| config.default_lang.clone());
+            // Resolve: custom > query > cookie > accept-language > default
+            let should_set_cookie = custom_lang.is_none() && query_lang.is_some();
+            let resolved = custom_lang
+                .or(query_lang)
+                .or(cookie_lang)
+                .or(accept_lang)
+                .unwrap_or_else(|| config.default_lang.clone());
 
             // Insert resolved language into extensions
             parts.extensions.insert(ResolvedLang(resolved.clone()));
@@ -163,6 +162,7 @@ where
 // --- Cookie helpers ---
 
 fn read_cookie(headers: &http::HeaderMap, cookie_name: &str) -> Option<String> {
+    let prefix = format!("{cookie_name}=");
     headers
         .get_all(http::header::COOKIE)
         .iter()
@@ -170,11 +170,10 @@ fn read_cookie(headers: &http::HeaderMap, cookie_name: &str) -> Option<String> {
             let val = val.to_str().ok()?;
             for pair in val.split(';') {
                 let pair = pair.trim();
-                if let Some(value) = pair.strip_prefix(cookie_name) {
-                    let value = value.strip_prefix('=')?;
-                    if !value.is_empty() {
-                        return Some(value.to_string());
-                    }
+                if let Some(value) = pair.strip_prefix(&prefix)
+                    && !value.is_empty()
+                {
+                    return Some(value.to_string());
                 }
             }
             None

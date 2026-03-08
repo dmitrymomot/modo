@@ -1,7 +1,6 @@
 use crate::config::I18nConfig;
 use crate::entry::Entry;
 use crate::error::I18nError;
-use serde::de::Error as _;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -25,7 +24,7 @@ impl TranslationStore {
     }
 
     pub fn has_lang(&self, lang: &str) -> bool {
-        self.langs.contains(&lang.to_string())
+        self.langs.iter().any(|l| l == lang)
     }
 
     /// Look up a plain translation key for a given language.
@@ -105,10 +104,10 @@ pub fn load(config: &I18nConfig) -> Result<Arc<TranslationStore>, I18nError> {
                 .to_string_lossy()
                 .to_string();
 
-            let content = fs::read_to_string(&file_path).map_err(|e| I18nError::ParseError {
+            let content = fs::read_to_string(&file_path).map_err(|e| I18nError::ReadError {
                 lang: lang_name.clone(),
                 file: namespace.clone(),
-                source: serde_yaml_ng::Error::custom(e.to_string()),
+                source: e,
             })?;
 
             let yaml: serde_yaml_ng::Value =
