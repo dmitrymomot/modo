@@ -17,7 +17,15 @@ serde_yaml_ng = "0.10"
 futures-util = "0.3"
 tracing = "0.1"
 
+modo-templates = { path = "../modo-templates", optional = true }
+minijinja = { version = "2", optional = true }
+
+[features]
+default = []
+templates = ["dep:modo-templates", "dep:minijinja"]
+
 [dev-dependencies]
+minijinja = "2"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
 http = "1"
