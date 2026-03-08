@@ -39,8 +39,8 @@ pub fn engine(config: &crate::TemplateConfig) -> Result<TemplateEngine, crate::T
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+    use std::path::PathBuf;
 
     fn setup_templates(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("modo_tmpl_test_{name}"));
