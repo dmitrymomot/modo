@@ -107,8 +107,8 @@ mod tests {
     use crate::store;
     use std::fs;
 
-    fn setup_store() -> (Arc<TranslationStore>, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join("modo_i18n_test_extractor");
+    fn setup_store(name: &str) -> (Arc<TranslationStore>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("modo_i18n_test_extractor_{name}"));
         let _ = fs::remove_dir_all(&dir);
         let en = dir.join("en");
         fs::create_dir_all(&en).unwrap();
@@ -145,7 +145,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_plain_key() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("plain");
         let i18n = I18n::new(store, "en".to_string(), "en".to_string());
         assert_eq!(i18n.t("common.farewell", &[]), "Goodbye");
         fs::remove_dir_all(&dir).unwrap();
@@ -153,7 +153,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_with_variables() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("vars");
         let i18n = I18n::new(store, "en".to_string(), "en".to_string());
         assert_eq!(
             i18n.t("common.greeting", &[("name", "Alice")]),
@@ -164,7 +164,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_fallback_to_default_lang() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("fallback");
         let i18n = I18n::new(store, "es".to_string(), "en".to_string());
         assert_eq!(i18n.t("common.farewell", &[]), "Goodbye");
         fs::remove_dir_all(&dir).unwrap();
@@ -172,7 +172,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_missing_key_returns_key() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("missing");
         let i18n = I18n::new(store, "en".to_string(), "en".to_string());
         assert_eq!(i18n.t("nonexistent.key", &[]), "nonexistent.key");
         fs::remove_dir_all(&dir).unwrap();
@@ -180,7 +180,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_plural_zero() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("pzero");
         let i18n = I18n::new(store, "en".to_string(), "en".to_string());
         assert_eq!(i18n.t_plural("common.items_count", 0, &[]), "No items");
         fs::remove_dir_all(&dir).unwrap();
@@ -188,7 +188,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_plural_one() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("pone");
         let i18n = I18n::new(store, "en".to_string(), "en".to_string());
         assert_eq!(i18n.t_plural("common.items_count", 1, &[]), "One item");
         fs::remove_dir_all(&dir).unwrap();
@@ -196,7 +196,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn t_plural_other_with_count_var() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("pother");
         let i18n = I18n::new(store, "en".to_string(), "en".to_string());
         assert_eq!(
             i18n.t_plural("common.items_count", 5, &[("count", "5")]),
@@ -207,7 +207,7 @@ greeting: "Hola, {name}!"
 
     #[test]
     fn lang_accessor() {
-        let (store, dir) = setup_store();
+        let (store, dir) = setup_store("accessor");
         let i18n = I18n::new(store.clone(), "es".to_string(), "en".to_string());
         assert_eq!(i18n.lang(), "es");
         let mut langs = i18n.available_langs().to_vec();
