@@ -1,9 +1,11 @@
 pub mod config;
 pub mod context;
+pub mod engine;
 pub mod error;
 
 pub use config::TemplateConfig;
 pub use context::TemplateContext;
+pub use engine::{TemplateEngine, engine};
 pub use error::TemplateError;
 
 // Re-export macro
