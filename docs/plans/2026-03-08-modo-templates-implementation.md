@@ -4,7 +4,7 @@
 
 **Goal:** Add MiniJinja-based template engine to modo with view structs, auto-rendered request context, HTMX partial support, and i18n integration.
 
-**Architecture:** Two crates — `modo-templates` (runtime: engine, context map, render layer, View type) and `modo-templates-macros` (proc macro: `#[view]`). The render layer is axum middleware that intercepts View responses, merges request context from extensions, and renders via MiniJinja. Other crates (csrf, i18n, flash) add their values to a shared `TemplateContext` in request extensions.
+**Architecture:** Two crates — `modo-templates` (runtime: config, engine, context map, render layer, View type) and `modo-templates-macros` (proc macro: `#[view]`). The render layer is axum middleware that intercepts View responses, merges request context from extensions, and renders via MiniJinja. Other crates (csrf, i18n, flash) add their values to a shared `TemplateContext` in request extensions. Template layers are auto-registered in `app.rs` when the engine is registered as a service — no manual `.layer()` calls needed.
 
 **Tech Stack:** MiniJinja (template engine), minijinja-embed (compile-time embedding), serde (context serialization), syn/quote (proc macro), axum/tower (middleware)
 
@@ -82,15 +82,63 @@ feat(modo-templates-macros): scaffold proc macro crate
 
 ---
 
-### Task 2: Scaffold modo-templates crate with TemplateContext and errors
+### Task 2: Scaffold modo-templates crate with TemplateConfig, TemplateContext, and errors
 
 **Files:**
 - Create: `modo-templates/Cargo.toml`
 - Create: `modo-templates/src/lib.rs`
+- Create: `modo-templates/src/config.rs`
 - Create: `modo-templates/src/error.rs`
 - Create: `modo-templates/src/context.rs`
 
-**Step 1: Write test for TemplateContext**
+**Step 1: Create config.rs (follows DatabaseConfig/SessionConfig/I18nConfig pattern)**
+
+```rust
+use serde::Deserialize;
+
+/// Template engine configuration, deserialized from YAML via `modo::config::load()`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TemplateConfig {
+    /// Directory containing template files.
+    pub path: String,
+    /// When true, accessing undefined variables in templates is an error.
+    pub strict: bool,
+}
+
+impl Default for TemplateConfig {
+    fn default() -> Self {
+        Self {
+            path: "templates".to_string(),
+            strict: true,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_values() {
+        let config = TemplateConfig::default();
+        assert_eq!(config.path, "templates");
+        assert!(config.strict);
+    }
+
+    #[test]
+    fn partial_yaml_deserialization() {
+        let yaml = r#"
+path: "views"
+"#;
+        let config: TemplateConfig = serde_yaml_ng::from_str(yaml).unwrap();
+        assert_eq!(config.path, "views");
+        assert!(config.strict); // default preserved
+    }
+}
+```
+
+**Step 2: Write test for TemplateContext**
 
 Create `modo-templates/src/context.rs` with tests at the bottom:
 
@@ -215,6 +263,7 @@ modo-templates-macros = { path = "../modo-templates-macros" }
 
 minijinja = { version = "2", features = ["loader"] }
 serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10"
 axum = "0.8"
 http = "1"
 tower = { version = "0.5", features = ["util"] }
@@ -231,9 +280,11 @@ serde = { version = "1", features = ["derive"] }
 **Step 4: Create lib.rs**
 
 ```rust
+pub mod config;
 pub mod context;
 pub mod error;
 
+pub use config::TemplateConfig;
 pub use context::TemplateContext;
 pub use error::TemplateError;
 
@@ -250,12 +301,12 @@ pub use minijinja::context;
 Add `"modo-templates"` to workspace `Cargo.toml` members list.
 
 Run: `cargo test -p modo-templates`
-Expected: 2 tests pass (insert_and_get, into_values_returns_all)
+Expected: 4 tests pass (2 config + 2 context)
 
 **Step 6: Commit**
 
 ```
-feat(modo-templates): scaffold crate with TemplateContext and errors
+feat(modo-templates): scaffold crate with TemplateConfig, TemplateContext, and errors
 ```
 
 ---
@@ -281,10 +332,11 @@ pub struct TemplateEngine {
 }
 
 impl TemplateEngine {
-    pub fn builder() -> TemplateEngineBuilder {
+    /// Create a builder from config (follows modo pattern: config → builder → service).
+    pub fn builder(config: &crate::TemplateConfig) -> TemplateEngineBuilder {
         TemplateEngineBuilder {
-            directory: None,
-            strict: true,
+            directory: config.path.clone().into(),
+            strict: config.strict,
         }
     }
 
@@ -307,19 +359,18 @@ impl TemplateEngine {
 }
 
 pub struct TemplateEngineBuilder {
-    directory: Option<PathBuf>,
+    directory: PathBuf,
     strict: bool,
 }
 
 impl TemplateEngineBuilder {
-    /// Set the directory to load templates from.
+    /// Override the template directory from config.
     pub fn directory(mut self, path: impl Into<PathBuf>) -> Self {
-        self.directory = Some(path.into());
+        self.directory = path.into();
         self
     }
 
-    /// Set strict undefined behavior (default: true).
-    /// When true, accessing undefined variables in templates is an error.
+    /// Override strict mode from config.
     pub fn strict(mut self, strict: bool) -> Self {
         self.strict = strict;
         self
@@ -333,10 +384,7 @@ impl TemplateEngineBuilder {
             env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
         }
 
-        if let Some(dir) = self.directory {
-            let dir = dir.clone();
-            env.set_loader(minijinja::path_loader(&dir));
-        }
+        env.set_loader(minijinja::path_loader(&self.directory));
 
         Ok(TemplateEngine { env })
     }
@@ -365,11 +413,17 @@ mod tests {
         dir
     }
 
+    fn test_config(dir: &std::path::Path) -> crate::TemplateConfig {
+        crate::TemplateConfig {
+            path: dir.to_str().unwrap().to_string(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn render_simple_template() {
         let dir = setup_templates("simple");
-        let engine = TemplateEngine::builder()
-            .directory(&dir)
+        let engine = TemplateEngine::builder(&test_config(&dir))
             .build()
             .unwrap();
 
@@ -384,8 +438,7 @@ mod tests {
     #[test]
     fn render_with_inheritance() {
         let dir = setup_templates("inherit");
-        let engine = TemplateEngine::builder()
-            .directory(&dir)
+        let engine = TemplateEngine::builder(&test_config(&dir))
             .build()
             .unwrap();
 
@@ -400,9 +453,7 @@ mod tests {
     #[test]
     fn strict_mode_rejects_undefined() {
         let dir = setup_templates("strict");
-        let engine = TemplateEngine::builder()
-            .directory(&dir)
-            .strict(true)
+        let engine = TemplateEngine::builder(&test_config(&dir))
             .build()
             .unwrap();
 
@@ -418,8 +469,7 @@ mod tests {
     #[test]
     fn template_not_found_error() {
         let dir = setup_templates("notfound");
-        let engine = TemplateEngine::builder()
-            .directory(&dir)
+        let engine = TemplateEngine::builder(&test_config(&dir))
             .build()
             .unwrap();
 
@@ -1372,11 +1422,12 @@ feat(modo-i18n): add template function registration for MiniJinja
 
 ---
 
-### Task 8: Wire up re-exports in modo umbrella crate
+### Task 8: Wire up re-exports and auto-registration in modo umbrella crate
 
 **Files:**
 - Modify: `modo/Cargo.toml`
 - Modify: `modo/src/lib.rs`
+- Modify: `modo/src/app.rs`
 
 **Step 1: Add optional dependency**
 
@@ -1405,15 +1456,52 @@ pub use modo_templates_macros::view;
 pub use modo_templates;
 ```
 
-**Step 3: Verify compilation**
+**Step 3: Add auto-registration in app.rs**
+
+In `modo/src/app.rs`, inside `run()`, add template layer auto-registration:
+
+Before user layers (render_layer = innermost):
+
+```rust
+// --- Template render layer (innermost — closest to handler) ---
+#[cfg(feature = "templates")]
+let template_engine: Option<std::sync::Arc<modo_templates::TemplateEngine>> = self
+    .services
+    .get(&TypeId::of::<modo_templates::TemplateEngine>())
+    .and_then(|s| s.clone().downcast::<modo_templates::TemplateEngine>().ok());
+
+#[cfg(feature = "templates")]
+if let Some(ref engine) = template_engine {
+    router = router.layer(modo_templates::RenderLayer::new(engine.clone()));
+}
+```
+
+After user layers (context_layer = outermost of context-writing middleware):
+
+```rust
+// --- User global layers (innermost of framework layers) ---
+for layer_fn in self.layers {
+    router = layer_fn(router);
+}
+
+// --- Template context layer (wraps user layers, creates TemplateContext) ---
+#[cfg(feature = "templates")]
+if template_engine.is_some() {
+    router = router.layer(modo_templates::ContextLayer::new());
+}
+```
+
+This guarantees the stack: `context_layer > user layers (csrf, i18n) > render_layer > handler`
+
+**Step 4: Verify compilation**
 
 Run: `cargo check -p modo --features templates`
 Expected: PASS
 
-**Step 4: Commit**
+**Step 5: Commit**
 
 ```
-feat(modo): re-export modo-templates behind templates feature flag
+feat(modo): auto-register template layers when engine is a service
 ```
 
 ---
@@ -1617,12 +1705,12 @@ Under `## Architecture`, update the `modo-templates` entry:
 Under `## Conventions`, add:
 
 ```
+- Templates config: `TemplateConfig { path, strict }` — YAML-deserializable with serde defaults
+- Template engine: `TemplateEngine::builder(&config).build()` — config → builder → service pattern
 - Views: `#[modo::view("pages/home.html")]` or `#[modo::view("page.html", htmx = "htmx/frag.html")]`
 - View structs: fields must implement `Serialize`, handler returns struct directly
 - Template context: `TemplateContext` in request extensions, middleware adds via `ctx.insert("key", value)`
-- Template engine: `TemplateEngine::builder().directory("templates").build()`
-- Render layer: `RenderLayer::new(engine)` — renders View responses, merges request context
-- Context layer: `ContextLayer::new()` — outermost, creates TemplateContext with request_id + current_url
+- Template layers: auto-registered when `TemplateEngine` is a service — no manual `.layer()` needed
 - HTMX views: htmx template rendered on HX-Request, always HTTP 200, non-200 skips render
 - i18n in templates: `{{ t("key", name=val) }}` — register via `modo_i18n::register_template_functions`
 ```

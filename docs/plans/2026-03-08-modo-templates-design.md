@@ -49,13 +49,27 @@ async fn show(db: Db, id: String) -> Result<views::orders::Show, Error> {
 }
 ```
 
+### TemplateConfig
+
+YAML-deserializable config with serde defaults, following the same pattern as `DatabaseConfig`, `SessionConfig`, `I18nConfig`:
+
+```rust
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct TemplateConfig {
+    pub path: String,       // "templates"
+    pub strict: bool,       // true — UndefinedBehavior::Strict
+}
+```
+
+Default: `path = "templates"`, `strict = true`.
+
 ### TemplateEngine
 
 Wraps `minijinja::Environment`. Arc-wrapped, registered as a service.
 
 ```rust
-let engine = modo_templates::engine()
-    .directory("templates")
+let engine = modo_templates::engine(&config)
     .build()?;
 ```
 
@@ -63,6 +77,22 @@ let engine = modo_templates::engine()
 - Release (`embed` feature): `minijinja-embed`, templates compiled into binary
 
 Global functions (i18n, helpers) registered on the engine at startup.
+
+### Auto-registration in app
+
+When `TemplateEngine` is registered as a service via `app.service(engine)`, the framework **automatically** inserts the context and render layers at the correct positions in the middleware stack. No manual `.layer()` calls needed.
+
+The framework guarantees correct ordering:
+
+```
+... framework layers > context_layer > user layers (csrf, i18n) > render_layer > handler
+```
+
+1. `context_layer` creates `TemplateContext` with `request_id` + `current_url`
+2. User middleware (i18n, csrf, flash) adds their values to `TemplateContext`
+3. `render_layer` intercepts `View` responses, merges context, renders via engine
+
+This is implemented in `app.rs` behind `#[cfg(feature = "templates")]` — same pattern planned for session, i18n, and auth auto-registration in the future.
 
 ### TemplateContext
 
@@ -193,19 +223,25 @@ Layouts use Jinja2 native `{% extends %}` / `{% block %}`. HTMX templates are fl
 ```rust
 #[modo::main]
 async fn main(app: Application) {
-    let mut engine = modo_templates::engine()
-        .directory("templates")
+    let mut engine = modo_templates::engine(&config.templates)
         .build()?;
 
-    // i18n registers t() function
+    // i18n registers t() function on the engine
     modo_i18n::register_template_functions(&mut engine, &i18n_store);
 
-    app.service(engine)
-       .layer(modo_templates::render_layer())      // innermost — renders views
-       .layer(modo_csrf::layer())                  // adds csrf_token
-       .layer(modo_i18n::layer(&i18n_config))      // adds locale
-       .layer(modo_templates::context_layer())     // outermost — creates context
+    // Just register as service — layers are auto-applied by the framework
+    app.service(i18n_store)
+       .service(engine)
+       .layer(modo_csrf::layer())    // adds csrf_token to TemplateContext
 }
+```
+
+Config in YAML (`config.yml`):
+
+```yaml
+templates:
+  path: "templates"
+  strict: true
 ```
 
 ## End-user handler
