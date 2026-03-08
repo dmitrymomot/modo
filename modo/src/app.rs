@@ -345,9 +345,8 @@ impl AppBuilder {
 
         // --- Template render layer (innermost — closest to handler) ---
         #[cfg(feature = "templates")]
-        let template_engine: Option<std::sync::Arc<modo_templates::TemplateEngine>> = state
-            .services
-            .get::<modo_templates::TemplateEngine>();
+        let template_engine: Option<std::sync::Arc<modo_templates::TemplateEngine>> =
+            state.services.get::<modo_templates::TemplateEngine>();
 
         #[cfg(feature = "templates")]
         if let Some(ref engine) = template_engine {
@@ -363,22 +362,26 @@ impl AppBuilder {
         #[cfg(feature = "templates")]
         if template_engine.is_some() {
             // Inject request_id into TemplateContext (runs after ContextLayer creates it)
-            router = router.layer(axum::middleware::from_fn(
-                |request: axum::http::Request<axum::body::Body>, next: axum::middleware::Next| async move {
-                    let (mut parts, body) = request.into_parts();
-                    let rid_str = parts
-                        .extensions
-                        .get::<crate::request_id::RequestId>()
-                        .map(|rid| rid.to_string());
-                    if let Some(rid_str) = rid_str {
-                        if let Some(ctx) = parts.extensions.get_mut::<modo_templates::TemplateContext>() {
+            router =
+                router.layer(axum::middleware::from_fn(
+                    |request: axum::http::Request<axum::body::Body>,
+                     next: axum::middleware::Next| async move {
+                        let (mut parts, body) = request.into_parts();
+                        let rid_str = parts
+                            .extensions
+                            .get::<crate::request_id::RequestId>()
+                            .map(|rid| rid.to_string());
+                        if let Some(rid_str) = rid_str
+                            && let Some(ctx) = parts
+                                .extensions
+                                .get_mut::<modo_templates::TemplateContext>()
+                        {
                             ctx.insert("request_id", rid_str);
                         }
-                    }
-                    let request = axum::http::Request::from_parts(parts, body);
-                    next.run(request).await
-                },
-            ));
+                        let request = axum::http::Request::from_parts(parts, body);
+                        next.run(request).await
+                    },
+                ));
             router = router.layer(modo_templates::ContextLayer::new());
         }
 

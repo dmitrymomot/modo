@@ -23,10 +23,7 @@ fn view_macro_creates_into_response() {
     let response = page.into_response();
 
     // View should be stashed in extensions
-    let view = response
-        .extensions()
-        .get::<modo_templates::View>()
-        .unwrap();
+    let view = response.extensions().get::<modo_templates::View>().unwrap();
     assert_eq!(view.template, "pages/home.html");
     assert!(view.htmx_template.is_none());
 }
@@ -40,13 +37,7 @@ fn view_macro_with_htmx() {
     };
     let response = page.into_response();
 
-    let view = response
-        .extensions()
-        .get::<modo_templates::View>()
-        .unwrap();
+    let view = response.extensions().get::<modo_templates::View>().unwrap();
     assert_eq!(view.template, "pages/login.html");
-    assert_eq!(
-        view.htmx_template.as_deref(),
-        Some("htmx/login_form.html")
-    );
+    assert_eq!(view.htmx_template.as_deref(), Some("htmx/login_form.html"));
 }

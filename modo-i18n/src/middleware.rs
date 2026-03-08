@@ -143,7 +143,10 @@ where
             // If TemplateContext exists (modo-templates context_layer is active),
             // add the locale to it.
             #[cfg(feature = "templates")]
-            if let Some(ctx) = parts.extensions.get_mut::<modo_templates::TemplateContext>() {
+            if let Some(ctx) = parts
+                .extensions
+                .get_mut::<modo_templates::TemplateContext>()
+            {
                 ctx.insert("locale", resolved.clone());
             }
 

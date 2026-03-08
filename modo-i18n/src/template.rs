@@ -30,9 +30,9 @@ pub fn register_template_functions(env: &mut Environment<'static>, store: Arc<Tr
             let mut count: Option<u64> = None;
 
             for k in kwargs.args() {
-                let v: String = kwargs.get::<String>(k).map_err(|e: Error| {
-                    Error::new(ErrorKind::InvalidOperation, e.to_string())
-                })?;
+                let v: String = kwargs
+                    .get::<String>(k)
+                    .map_err(|e: Error| Error::new(ErrorKind::InvalidOperation, e.to_string()))?;
                 if k == "count" {
                     count = v.parse().ok();
                 }

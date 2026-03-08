@@ -1,11 +1,11 @@
+use axum::Router;
 use axum::body::Body;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::Router;
 use http::Request;
+use modo_templates::View;
 use modo_templates::middleware::ContextLayer;
 use modo_templates::render::RenderLayer;
-use modo_templates::View;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -35,10 +35,7 @@ async fn renders_view_with_merged_context() {
     let (engine, dir) = setup("merged");
 
     async fn handler() -> impl IntoResponse {
-        View::new(
-            "hello.html",
-            minijinja::context! { name => "World" }.into(),
-        )
+        View::new("hello.html", minijinja::context! { name => "World" })
     }
 
     let app = Router::new()
@@ -66,11 +63,8 @@ async fn htmx_request_uses_htmx_template() {
     let (engine, dir) = setup("htmx");
 
     async fn handler() -> impl IntoResponse {
-        View::new(
-            "hello.html",
-            minijinja::context! { name => "World" }.into(),
-        )
-        .with_htmx("hello_htmx.html")
+        View::new("hello.html", minijinja::context! { name => "World" })
+            .with_htmx("hello_htmx.html")
     }
 
     let app = Router::new()

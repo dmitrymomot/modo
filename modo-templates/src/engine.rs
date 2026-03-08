@@ -18,7 +18,11 @@ impl TemplateEngine {
     }
 
     /// Render a template by name with the given context value.
-    pub fn render(&self, name: &str, ctx: minijinja::Value) -> Result<String, crate::TemplateError> {
+    pub fn render(
+        &self,
+        name: &str,
+        ctx: minijinja::Value,
+    ) -> Result<String, crate::TemplateError> {
         let tmpl = self.env.get_template(name)?;
         Ok(tmpl.render(ctx)?)
     }
@@ -47,11 +51,7 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("hello.html"), "Hello {{ name }}!").unwrap();
-        fs::write(
-            dir.join("layout.html"),
-            "{% block content %}{% endblock %}",
-        )
-        .unwrap();
+        fs::write(dir.join("layout.html"), "{% block content %}{% endblock %}").unwrap();
         fs::write(
             dir.join("page.html"),
             r#"{% extends "layout.html" %}{% block content %}Page: {{ title }}{% endblock %}"#,
@@ -73,7 +73,7 @@ mod tests {
         let engine = crate::engine(&test_config(&dir)).unwrap();
 
         let result = engine
-            .render("hello.html", minijinja::context! { name => "World" }.into())
+            .render("hello.html", minijinja::context! { name => "World" })
             .unwrap();
         assert_eq!(result, "Hello World!");
 
@@ -86,7 +86,7 @@ mod tests {
         let engine = crate::engine(&test_config(&dir)).unwrap();
 
         let result = engine
-            .render("page.html", minijinja::context! { title => "Home" }.into())
+            .render("page.html", minijinja::context! { title => "Home" })
             .unwrap();
         assert_eq!(result, "Page: Home");
 
@@ -100,7 +100,7 @@ mod tests {
 
         let result = engine.render(
             "hello.html",
-            minijinja::context! {}.into(), // name is missing
+            minijinja::context! {}, // name is missing
         );
         assert!(result.is_err());
 
@@ -112,11 +112,8 @@ mod tests {
         let dir = setup_templates("notfound");
         let engine = crate::engine(&test_config(&dir)).unwrap();
 
-        let result = engine.render("nonexistent.html", minijinja::context! {}.into());
-        assert!(matches!(
-            result,
-            Err(crate::TemplateError::NotFound { .. })
-        ));
+        let result = engine.render("nonexistent.html", minijinja::context! {});
+        assert!(matches!(result, Err(crate::TemplateError::NotFound { .. })));
 
         fs::remove_dir_all(&dir).unwrap();
     }

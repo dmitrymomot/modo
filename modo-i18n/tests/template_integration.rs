@@ -38,8 +38,7 @@ fn t_function_simple_key() {
     let mut env = Environment::new();
     register_template_functions(&mut env, store);
 
-    env.add_template("test", "{{ t('common.title') }}")
-        .unwrap();
+    env.add_template("test", "{{ t('common.title') }}").unwrap();
     let tmpl = env.get_template("test").unwrap();
     let result = tmpl.render(context! { locale => "en" }).unwrap();
     assert_eq!(result, "Welcome");
