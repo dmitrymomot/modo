@@ -33,13 +33,12 @@ impl Default for PasswordConfig {
 /// and extract in handlers via `Service<PasswordHasher>`.
 #[derive(Debug, Clone)]
 pub struct PasswordHasher {
-    config: PasswordConfig,
+    params: Params,
 }
 
 impl PasswordHasher {
     pub fn new(config: PasswordConfig) -> Result<Self, modo::Error> {
-        // Validate by attempting to build Argon2 params eagerly
-        Params::new(
+        let params = Params::new(
             config.memory_cost_kib,
             config.time_cost,
             config.parallelism,
@@ -47,7 +46,7 @@ impl PasswordHasher {
         )
         .map_err(|e| modo::Error::internal(format!("invalid argon2 params: {e}")))?;
 
-        Ok(Self { config })
+        Ok(Self { params })
     }
 
     /// Hash a password using Argon2id with a random salt.
@@ -55,18 +54,10 @@ impl PasswordHasher {
     /// Returns a PHC-formatted string that embeds algorithm, params, salt, and hash.
     /// Runs on a blocking thread to avoid stalling the Tokio runtime.
     pub async fn hash_password(&self, password: &str) -> Result<String, modo::Error> {
-        let config = self.config.clone();
+        let params = self.params.clone();
         let password = password.to_owned();
 
         tokio::task::spawn_blocking(move || {
-            let params = Params::new(
-                config.memory_cost_kib,
-                config.time_cost,
-                config.parallelism,
-                None,
-            )
-            .map_err(|e| modo::Error::internal(format!("invalid argon2 params: {e}")))?;
-
             let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
             let salt = SaltString::generate(&mut OsRng);
 
@@ -84,7 +75,7 @@ impl PasswordHasher {
     /// Returns `Ok(true)` on match, `Ok(false)` on mismatch.
     /// Returns `Err` only for malformed hash strings.
     ///
-    /// Note: uses the params embedded in the hash, not `self.config`.
+    /// Note: uses the params embedded in the hash, not `self.params`.
     /// Runs on a blocking thread to avoid stalling the Tokio runtime.
     pub async fn verify_password(&self, password: &str, hash: &str) -> Result<bool, modo::Error> {
         let password = password.to_owned();
