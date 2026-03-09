@@ -72,6 +72,9 @@ impl ServiceRegistry {
 
 type LayerFn = Box<dyn FnOnce(Router<AppState>) -> Router<AppState> + Send>;
 type ShutdownHook = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
+#[cfg(feature = "static-embed")]
+type EmbedBuilderFn =
+    Box<dyn FnOnce(&crate::static_files::StaticConfig) -> axum::Router<()> + Send>;
 
 pub struct AppBuilder {
     server_config: ServerConfig,
@@ -88,8 +91,8 @@ pub struct AppBuilder {
     override_rate_limit: Option<Option<RateLimitConfig>>,
     override_trailing_slash: Option<TrailingSlash>,
     override_maintenance: Option<bool>,
-    #[cfg(any(feature = "static-fs", feature = "static-embed"))]
-    static_router: Option<(String, axum::Router<()>)>,
+    #[cfg(feature = "static-embed")]
+    embed_builder: Option<EmbedBuilderFn>,
 }
 
 impl AppBuilder {
@@ -108,8 +111,8 @@ impl AppBuilder {
             override_rate_limit: None,
             override_trailing_slash: None,
             override_maintenance: None,
-            #[cfg(any(feature = "static-fs", feature = "static-embed"))]
-            static_router: None,
+            #[cfg(feature = "static-embed")]
+            embed_builder: None,
         }
     }
 
@@ -230,32 +233,12 @@ impl AppBuilder {
         self
     }
 
-    /// Serve static files from the filesystem (dev-friendly).
-    #[cfg(feature = "static-fs")]
-    pub fn static_files(mut self, config: crate::static_files::StaticConfig) -> Self {
-        assert!(
-            config.prefix.starts_with('/'),
-            "static files prefix must start with '/'"
-        );
-        let prefix = config.prefix.clone();
-        let router = crate::static_files::build_fs_service(&config);
-        self.static_router = Some((prefix, router));
-        self
-    }
-
-    /// Serve static files embedded in the binary (prod-friendly).
+    /// Register an embedded static file type (called by `#[modo::main]` macro).
     #[cfg(feature = "static-embed")]
-    pub fn static_files_embedded<E: rust_embed::Embed + 'static>(
-        mut self,
-        config: crate::static_files::StaticConfig,
-    ) -> Self {
-        assert!(
-            config.prefix.starts_with('/'),
-            "static files prefix must start with '/'"
-        );
-        let prefix = config.prefix.clone();
-        let router = crate::static_files::build_embed_service::<E>(&config);
-        self.static_router = Some((prefix, router));
+    pub fn embed_static_files<E: rust_embed::Embed + 'static>(mut self) -> Self {
+        self.embed_builder = Some(Box::new(|config| {
+            crate::static_files::build_embed_service::<E>(config)
+        }));
         self
     }
 
@@ -382,9 +365,28 @@ impl AppBuilder {
 
         // Mount static file service (before fallback so it takes precedence)
         #[cfg(any(feature = "static-fs", feature = "static-embed"))]
-        if let Some((prefix, static_svc)) = self.static_router {
-            router = router.nest_service(&prefix, static_svc);
-            info!("Serving static files at {}", prefix);
+        if let Some(ref static_config) = server_config.static_files {
+            assert!(
+                static_config.prefix.starts_with('/'),
+                "static files prefix must start with '/'"
+            );
+
+            let mut static_svc = None;
+
+            #[cfg(feature = "static-embed")]
+            if let Some(builder) = self.embed_builder {
+                static_svc = Some(builder(static_config));
+            }
+
+            #[cfg(feature = "static-fs")]
+            if static_svc.is_none() {
+                static_svc = Some(crate::static_files::build_fs_service(static_config));
+            }
+
+            if let Some(svc) = static_svc {
+                router = router.nest_service(&static_config.prefix, svc);
+                info!("Serving static files at {}", static_config.prefix);
+            }
         }
 
         // Fallback for unmatched routes — returns a proper JSON 404
