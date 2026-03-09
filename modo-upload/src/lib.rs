@@ -1,11 +1,15 @@
 pub use modo_upload_macros::FromMultipart;
 
+mod config;
 mod extractor;
 mod file;
 pub mod storage;
 mod stream;
 mod validate;
 
+pub use config::{StorageBackend, UploadConfig};
+#[cfg(feature = "opendal")]
+pub use config::S3Config;
 pub use extractor::MultipartForm;
 pub use file::UploadedFile;
 pub use storage::{FileStorage, StoredFile};
