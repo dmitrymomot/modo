@@ -25,7 +25,12 @@ pub fn register_template_functions(env: &mut Environment<'static>) {
         let field_name = state
             .lookup("csrf_field_name")
             .map(|v: minijinja::Value| v.to_string())
-            .unwrap_or_else(|| "_csrf_token".to_string());
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidOperation,
+                    "csrf_field_name not found in template context — is the CSRF middleware active?",
+                )
+            })?;
 
         let escaped = html_escape(&token);
         Ok(format!(
