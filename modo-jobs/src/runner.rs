@@ -60,6 +60,18 @@ impl Deref for JobsHandle {
     }
 }
 
+impl modo::GracefulShutdown for JobsHandle {
+    fn graceful_shutdown(
+        &self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
+        Box::pin(self.shutdown())
+    }
+
+    fn shutdown_phase(&self) -> modo::ShutdownPhase {
+        modo::ShutdownPhase::Drain
+    }
+}
+
 /// Shared context for a poll loop, replacing many individual parameters.
 struct PollContext {
     db: modo_db::sea_orm::DatabaseConnection,
