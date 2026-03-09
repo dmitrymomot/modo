@@ -386,6 +386,8 @@ impl AppBuilder {
             if let Some(svc) = static_svc {
                 router = router.nest_service(&static_config.prefix, svc);
                 info!("Serving static files at {}", static_config.prefix);
+            } else {
+                warn!("static_files configured but no static file backend is available");
             }
         }
 

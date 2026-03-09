@@ -28,23 +28,22 @@ pub fn build_fs_service(config: &StaticConfig) -> axum::Router<()> {
     use axum::http::header;
     use tower_http::services::ServeDir;
 
-    let cache_control = config
+    let cache_header: axum::http::HeaderValue = config
         .cache_control
-        .clone()
-        .unwrap_or_else(|| "max-age=3600".to_string());
+        .as_deref()
+        .unwrap_or("max-age=3600")
+        .parse()
+        .expect("invalid cache_control value");
 
     axum::Router::new()
         .fallback_service(ServeDir::new(&config.dir))
         .layer(axum::middleware::map_response(
             move |response: axum::response::Response| {
-                let cache_control = cache_control.clone();
+                let cache_header = cache_header.clone();
                 async move {
                     if response.status().is_success() {
                         let (mut parts, body) = response.into_parts();
-                        parts.headers.insert(
-                            header::CACHE_CONTROL,
-                            cache_control.parse().expect("invalid cache_control value"),
-                        );
+                        parts.headers.insert(header::CACHE_CONTROL, cache_header);
                         axum::response::Response::from_parts(parts, body)
                     } else {
                         response
@@ -59,16 +58,18 @@ pub fn build_fs_service(config: &StaticConfig) -> axum::Router<()> {
 pub fn build_embed_service<E: rust_embed::Embed + 'static>(
     config: &StaticConfig,
 ) -> axum::Router<()> {
-    use axum::http::{StatusCode, header};
+    use axum::http::{HeaderMap, StatusCode, header};
     use axum::response::IntoResponse;
 
-    let cache_control = config
+    let cache_header: axum::http::HeaderValue = config
         .cache_control
-        .clone()
-        .unwrap_or_else(|| "max-age=31536000, immutable".to_string());
+        .as_deref()
+        .unwrap_or("max-age=31536000, immutable")
+        .parse()
+        .expect("invalid cache_control value");
 
-    axum::Router::new().fallback(move |uri: axum::http::Uri| {
-        let cache_control = cache_control.clone();
+    axum::Router::new().fallback(move |uri: axum::http::Uri, headers: HeaderMap| {
+        let cache_header = cache_header.clone();
         async move {
             let path = uri.path().trim_start_matches('/');
             match E::get(path) {
@@ -81,14 +82,28 @@ pub fn build_embed_service<E: rust_embed::Embed + 'static>(
                         .map(|b| format!("{b:02x}"))
                         .collect();
                     let etag = format!("\"{hash}\"");
+                    let cache_value = cache_header.to_str().unwrap_or_default().to_string();
+
+                    // Return 304 if ETag matches
+                    if headers
+                        .get(header::IF_NONE_MATCH)
+                        .and_then(|v| v.to_str().ok())
+                        .is_some_and(|v| v == etag)
+                    {
+                        return (
+                            [(header::ETAG, etag), (header::CACHE_CONTROL, cache_value)],
+                            StatusCode::NOT_MODIFIED,
+                        )
+                            .into_response();
+                    }
 
                     (
                         [
                             (header::CONTENT_TYPE, mime.as_ref().to_string()),
                             (header::ETAG, etag),
-                            (header::CACHE_CONTROL, cache_control),
+                            (header::CACHE_CONTROL, cache_value),
                         ],
-                        file.data.to_vec(),
+                        axum::body::Bytes::copy_from_slice(&file.data),
                     )
                         .into_response()
                 }
@@ -333,5 +348,54 @@ mod embed_tests {
             response.headers().get(header::CACHE_CONTROL).unwrap(),
             "public, max-age=86400"
         );
+    }
+
+    #[tokio::test]
+    async fn if_none_match_returns_304() {
+        let config = StaticConfig::default();
+
+        // First request to get the ETag
+        let router = build_embed_service::<TestAssets>(&config);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/hello.txt")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let etag = response
+            .headers()
+            .get(header::ETAG)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        // Second request with If-None-Match
+        let router = build_embed_service::<TestAssets>(&config);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/hello.txt")
+                    .header(header::IF_NONE_MATCH, &etag)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ETAG)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            etag
+        );
+        assert!(response.headers().get(header::CACHE_CONTROL).is_some());
     }
 }

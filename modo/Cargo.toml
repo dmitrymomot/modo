@@ -14,7 +14,7 @@ tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = [
     "trace", "cors", "timeout", "limit",
-    "compression-full", "catch-panic", "sensitive-headers", "fs"
+    "compression-full", "catch-panic", "sensitive-headers"
 ] }
 dashmap = "6"
 serde = { version = "1", features = ["derive"] }
@@ -53,7 +53,7 @@ mime_guess = { version = "2", optional = true }
 [features]
 default = []
 templates = ["dep:modo-templates", "dep:modo-templates-macros"]
-static-fs = []
+static-fs = ["tower-http/fs"]
 static-embed = ["dep:rust-embed", "dep:mime_guess", "modo-macros/static-embed"]
 
 [dev-dependencies]
