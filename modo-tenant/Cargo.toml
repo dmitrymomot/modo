@@ -5,9 +5,11 @@ edition = "2024"
 license.workspace = true
 
 [dependencies]
+http = "1"
 modo = { path = "../modo" }
 modo-auth = { path = "../modo-auth" }
 modo-session = { path = "../modo-session" }
+modo-tenant-macros = { path = "../modo-tenant-macros" }
 serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 

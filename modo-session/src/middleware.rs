@@ -209,6 +209,23 @@ where
     }
 }
 
+/// Extract the current user ID from request extensions without going through
+/// the full `SessionManager` extractor. Useful for middleware/layers.
+///
+/// Returns `None` if no session middleware is active, no session exists, or
+/// the session lock is currently held.
+pub fn user_id_from_extensions(extensions: &http::Extensions) -> Option<String> {
+    extensions
+        .get::<Arc<SessionManagerState>>()
+        .and_then(|state| {
+            state
+                .current_session
+                .try_lock()
+                .ok()
+                .and_then(|guard| guard.as_ref().map(|s| s.user_id.clone()))
+        })
+}
+
 // --- Cookie helpers ---
 
 fn read_session_cookie(headers: &http::HeaderMap, cookie_name: &str) -> Option<SessionToken> {

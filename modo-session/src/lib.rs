@@ -15,7 +15,7 @@ pub mod cleanup;
 pub use config::SessionConfig;
 pub use manager::SessionManager;
 pub use meta::SessionMeta;
-pub use middleware::layer;
+pub use middleware::{layer, user_id_from_extensions};
 pub use store::SessionStore;
 pub use types::{SessionData, SessionId, SessionToken};
 

@@ -1,13 +1,17 @@
 use proc_macro::TokenStream;
 
-/// Placeholder — implemented in Task 8.
+mod roles;
+
 #[proc_macro_attribute]
-pub fn allow_roles(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
+pub fn allow_roles(attr: TokenStream, item: TokenStream) -> TokenStream {
+    roles::expand_allow_roles(attr.into(), item.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
 }
 
-/// Placeholder — implemented in Task 8.
 #[proc_macro_attribute]
-pub fn deny_roles(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
+pub fn deny_roles(attr: TokenStream, item: TokenStream) -> TokenStream {
+    roles::expand_deny_roles(attr.into(), item.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
 }
