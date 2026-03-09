@@ -131,7 +131,11 @@ where
                             parts.extensions.insert(ResolvedTenant(Arc::new(t.clone())));
                             Some(t)
                         }
-                        _ => None,
+                        Ok(None) => None,
+                        Err(e) => {
+                            tracing::warn!("TenantContextLayer: tenant resolution failed: {e}");
+                            None
+                        }
                     }
                 };
 

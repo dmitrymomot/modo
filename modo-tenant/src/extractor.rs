@@ -282,12 +282,7 @@ where
         let member_ext = Member::<T, M>::from_request_parts(parts, state).await?;
 
         // Load user
-        let session = SessionManager::from_request_parts(parts, state)
-            .await
-            .map_err(|_| Error::internal("TenantContext requires session middleware"))?;
-        let user_id = session
-            .user_id()
-            .await
+        let user_id = modo_session::user_id_from_extensions(&parts.extensions)
             .ok_or_else(|| Error::from(HttpError::Unauthorized))?;
 
         let user_provider = state
@@ -519,5 +514,71 @@ mod tests {
         assert_eq!(member.tenant().tenant_id(), "t-1");
         assert_eq!(member.role(), "admin");
         assert_eq!(member.user_id, "u-1"); // Deref to M
+    }
+
+    #[tokio::test]
+    async fn member_extractor_returns_cached_member() {
+        use crate::cache::{ResolvedMember, ResolvedRole};
+        use crate::member::MemberProviderService;
+
+        // Dummy member provider (never called — cache hit path)
+        struct NoOpMemberProvider;
+        impl crate::member::MemberProvider for NoOpMemberProvider {
+            type Member = TestMember;
+            type Tenant = TestTenant;
+
+            async fn find_member(
+                &self,
+                _user_id: &str,
+                _tenant_id: &str,
+            ) -> Result<Option<Self::Member>, modo::Error> {
+                panic!("should not be called on cache hit");
+            }
+
+            async fn list_tenants(&self, _user_id: &str) -> Result<Vec<Self::Tenant>, modo::Error> {
+                panic!("should not be called on cache hit");
+            }
+
+            fn role<'a>(&'a self, member: &'a Self::Member) -> &'a str {
+                &member.role
+            }
+        }
+
+        let services = ServiceRegistry::new()
+            .with(TenantResolverService::new(TestResolver))
+            .with(MemberProviderService::new(NoOpMemberProvider));
+        let state = AppState {
+            services,
+            server_config: Default::default(),
+            cookie_key: axum_extra::extract::cookie::Key::generate(),
+        };
+
+        let app = Router::new()
+            .route(
+                "/",
+                get(|member: Member<TestTenant, TestMember>| async move {
+                    format!("{}:{}", member.user_id, member.role())
+                }),
+            )
+            .with_state(state);
+
+        let cached_member = TestMember {
+            user_id: "u-1".to_string(),
+            tenant_id: "t-1".to_string(),
+            role: "admin".to_string(),
+        };
+
+        let mut req = Request::builder()
+            .header("host", "acme.test.com")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut()
+            .insert(ResolvedMember(Arc::new(cached_member)));
+        req.extensions_mut()
+            .insert(ResolvedRole("admin".to_string()));
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

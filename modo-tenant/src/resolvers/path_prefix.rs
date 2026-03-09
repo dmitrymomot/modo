@@ -3,6 +3,10 @@ use modo::axum::http::request::Parts;
 use std::future::Future;
 use std::marker::PhantomData;
 
+/// Resolves tenants from the first path segment (e.g., `/acme/dashboard` → `"acme"`).
+///
+/// The lookup closure is called for every request's first path segment.
+/// It should return `Ok(None)` quickly for non-tenant slugs (e.g., `"assets"`, `"api"`).
 pub struct PathPrefixResolver<T, F> {
     lookup: F,
     _phantom: PhantomData<T>,

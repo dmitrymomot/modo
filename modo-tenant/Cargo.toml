@@ -15,11 +15,11 @@ serde = { version = "1", features = ["derive"] }
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 futures-util = "0.3"
-minijinja = "2"
+minijinja = { version = "2", optional = true }
 
 [features]
 default = []
-templates = ["dep:modo-templates"]
+templates = ["dep:modo-templates", "dep:minijinja"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
