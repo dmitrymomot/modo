@@ -20,7 +20,7 @@ futures-util = "0.3"
 tokio = { version = "1", features = ["fs", "io-util"] }
 tokio-util = { version = "0.7", features = ["io"] }
 ulid = "1"
-opendal = { version = "0.53", optional = true }
+opendal = { version = "0.53", optional = true, features = ["services-s3"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

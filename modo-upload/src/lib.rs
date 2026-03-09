@@ -12,7 +12,7 @@ pub use config::{StorageBackend, UploadConfig};
 pub use config::S3Config;
 pub use extractor::MultipartForm;
 pub use file::UploadedFile;
-pub use storage::{FileStorage, StoredFile};
+pub use storage::{storage, FileStorage, StoredFile};
 pub use stream::UploadStream;
 pub use validate::{gb, kb, mb};
 
