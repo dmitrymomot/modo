@@ -4,17 +4,7 @@ Prioritized feature list for the modo framework, grouped by impact for micro-Saa
 
 ## Tier 1 — High Impact
 
-### 1. `modo-csrf` — CSRF Protection
-
-Double-submit cookie pattern. Required for any form-based app.
-
-- Generate CSRF token, store in signed cookie
-- Middleware validates token on POST/PUT/PATCH/DELETE
-- Template helper to inject hidden field
-- `#[middleware(csrf_protection)]` on handlers/modules
-- Integration with `modo-templates` (auto-inject token into context)
-
-### 2. `modo-mail` — Email Sending
+### 1. `modo-mail` — Email Sending
 
 Email is table stakes for SaaS — signup confirmation, password reset, notifications.
 
@@ -27,7 +17,7 @@ Email is table stakes for SaaS — signup confirmation, password reset, notifica
 - `Mail` extractor for handlers
 - Async sending (direct or via `modo-jobs` queue)
 
-### 3. `modo-cache` — Caching Layer
+### 2. `modo-cache` — Caching Layer
 
 In-memory and optional Redis support for performance-critical paths.
 
@@ -42,7 +32,7 @@ In-memory and optional Redis support for performance-critical paths.
 
 ## Tier 2 — Strong Value-Add
 
-### 6. `modo-sse` — Server-Sent Events
+### 3. `modo-sse` — Server-Sent Events
 
 Real-time server-to-client streaming. Simpler than WebSockets, works with HTMX.
 
@@ -53,7 +43,7 @@ Real-time server-to-client streaming. Simpler than WebSockets, works with HTMX.
 - Automatic client reconnection support
 - Use cases: job progress, live notifications, dashboard updates
 
-### 7. Pagination Helpers — in `modo-db`
+### 4. Pagination Helpers — in `modo-db`
 
 Every API and list view needs pagination.
 
@@ -64,7 +54,7 @@ Every API and list view needs pagination.
 - Response metadata: total count, page count, next/prev cursors
 - Works with SeaORM `Select` queries
 
-### 8. API Key Authentication — in `modo-auth`
+### 5. API Key Authentication — in `modo-auth`
 
 Many SaaS products expose APIs to customers.
 
@@ -76,7 +66,7 @@ Many SaaS products expose APIs to customers.
 - Key rotation (create new before revoking old)
 - `ApiKeyProvider` trait (similar to `UserProvider`)
 
-### 10. Audit Logging — `modo-audit`
+### 6. Audit Logging — `modo-audit`
 
 Who did what when. Compliance requirement for B2B SaaS.
 
@@ -91,7 +81,7 @@ Who did what when. Compliance requirement for B2B SaaS.
 
 ## Tier 3 — Nice to Have
 
-### 11. WebSocket Support — `modo-ws`
+### 7. WebSocket Support — `modo-ws`
 
 Full-duplex communication for interactive features.
 
@@ -101,7 +91,7 @@ Full-duplex communication for interactive features.
 - Authentication on upgrade
 - Use cases: chat, collaborative editing, live cursors
 
-### 12. CLI Scaffolding Tool
+### 8. CLI Scaffolding Tool
 
 Developer experience improvement for project bootstrapping.
 
@@ -111,7 +101,7 @@ Developer experience improvement for project bootstrapping.
 - `modo generate job <name>` — create background job
 - Template-based generation
 
-### 14. Metrics & Observability — `modo-metrics`
+### 9. Metrics & Observability — `modo-metrics`
 
 Production monitoring and alerting.
 
@@ -122,7 +112,7 @@ Production monitoring and alerting.
 - Custom application metrics API
 - Optional Grafana dashboard templates
 
-### 15. Webhook Delivery — `modo-webhooks`
+### 10. Webhook Delivery — `modo-webhooks`
 
 Outbound webhooks for SaaS integrations.
 
@@ -133,7 +123,7 @@ Outbound webhooks for SaaS integrations.
 - Event filtering per endpoint
 - Payload serialization (JSON)
 
-### 16. RBAC / Permissions
+### 11. RBAC / Permissions
 
 Role-based access control for multi-user apps.
 
