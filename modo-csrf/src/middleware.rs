@@ -81,6 +81,7 @@ async fn handle_safe_request(
         .get_mut::<modo_templates::TemplateContext>()
     {
         ctx.insert("csrf_token", raw_token.clone());
+        ctx.insert("csrf_field_name", config.field_name.clone());
     }
 
     let request = Request::from_parts(parts, body);
@@ -108,7 +109,7 @@ async fn handle_mutating_request(
     config: &CsrfConfig,
     key: &[u8],
 ) -> Response {
-    let (parts, body) = request.into_parts();
+    let (mut parts, body) = request.into_parts();
 
     // 1. Read and verify cookie token
     let cookie_token = match read_cookie(&parts.headers, &config.cookie_name)
@@ -132,7 +133,13 @@ async fn handle_mutating_request(
     let (submitted, body) = if submitted.is_some() {
         (submitted, body)
     } else {
-        extract_from_form_body(&parts.headers, body, &config.field_name).await
+        extract_from_form_body(
+            &parts.headers,
+            body,
+            &config.field_name,
+            config.max_body_bytes,
+        )
+        .await
     };
 
     let submitted = match submitted {
@@ -149,6 +156,18 @@ async fn handle_mutating_request(
         return StatusCode::FORBIDDEN.into_response();
     }
 
+    // 5. Inject token so handlers re-rendering forms (e.g. validation errors) can access it
+    parts.extensions.insert(CsrfToken(cookie_token.clone()));
+
+    #[cfg(feature = "templates")]
+    if let Some(ctx) = parts
+        .extensions
+        .get_mut::<modo_templates::TemplateContext>()
+    {
+        ctx.insert("csrf_token", cookie_token.clone());
+        ctx.insert("csrf_field_name", config.field_name.clone());
+    }
+
     let request = Request::from_parts(parts, body);
     next.run(request).await
 }
@@ -159,6 +178,7 @@ async fn extract_from_form_body(
     headers: &http::HeaderMap,
     body: Body,
     field_name: &str,
+    max_body_bytes: usize,
 ) -> (Option<String>, Body) {
     let is_form = headers
         .get(header::CONTENT_TYPE)
@@ -170,7 +190,7 @@ async fn extract_from_form_body(
     }
 
     // Buffer the body
-    let bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
+    let bytes = match axum::body::to_bytes(body, max_body_bytes).await {
         Ok(b) => b,
         Err(_) => return (None, Body::empty()),
     };

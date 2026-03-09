@@ -22,6 +22,10 @@ pub fn generate(len: usize) -> String {
 /// If `key` is empty (dev mode), returns the raw token unsigned.
 pub fn sign(token: &str, key: &[u8]) -> String {
     if key.is_empty() {
+        static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+        WARN_ONCE.call_once(|| {
+            tracing::warn!("CSRF HMAC signing key is empty — tokens are unsigned (dev mode only)");
+        });
         return token.to_string();
     }
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC-SHA256 accepts any key length");
@@ -39,6 +43,12 @@ pub fn sign(token: &str, key: &[u8]) -> String {
 /// If `key` is empty (dev mode), returns the input as-is (no signature expected).
 pub fn verify(signed: &str, key: &[u8]) -> Option<String> {
     if key.is_empty() {
+        static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+        WARN_ONCE.call_once(|| {
+            tracing::warn!(
+                "CSRF HMAC verification key is empty — signature check skipped (dev mode only)"
+            );
+        });
         return Some(signed.to_string());
     }
     let (token, sig_hex) = signed.rsplit_once('.')?;

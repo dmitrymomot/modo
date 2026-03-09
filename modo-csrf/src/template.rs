@@ -22,8 +22,14 @@ pub fn register_template_functions(env: &mut Environment<'static>) {
             ));
         }
 
+        let field_name = state
+            .lookup("csrf_field_name")
+            .map(|v: minijinja::Value| v.to_string())
+            .unwrap_or_else(|| "_csrf_token".to_string());
+
+        let escaped = html_escape(&token);
         Ok(format!(
-            r#"<input type="hidden" name="_csrf_token" value="{token}">"#
+            r#"<input type="hidden" name="{field_name}" value="{escaped}">"#
         ))
     });
 
@@ -42,4 +48,18 @@ pub fn register_template_functions(env: &mut Environment<'static>) {
 
         Ok(token)
     });
+}
+
+fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '"' => out.push_str("&quot;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(c),
+        }
+    }
+    out
 }

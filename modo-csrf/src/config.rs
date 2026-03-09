@@ -9,6 +9,7 @@ pub struct CsrfConfig {
     pub cookie_max_age: u64,
     pub token_length: usize,
     pub secure: bool,
+    pub max_body_bytes: usize,
 }
 
 impl Default for CsrfConfig {
@@ -19,7 +20,8 @@ impl Default for CsrfConfig {
             header_name: "x-csrf-token".to_string(),
             cookie_max_age: 86400,
             token_length: 32,
-            secure: false,
+            secure: true,
+            max_body_bytes: 1_048_576,
         }
     }
 }
@@ -36,18 +38,21 @@ mod tests {
         assert_eq!(config.header_name, "x-csrf-token");
         assert_eq!(config.cookie_max_age, 86400);
         assert_eq!(config.token_length, 32);
-        assert!(!config.secure);
+        assert!(config.secure);
+        assert_eq!(config.max_body_bytes, 1_048_576);
     }
 
     #[test]
     fn partial_yaml_deserialization() {
         let yaml = r#"
 cookie_name: "my_csrf"
-secure: true
+secure: false
+max_body_bytes: 2097152
 "#;
         let config: CsrfConfig = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(config.cookie_name, "my_csrf");
-        assert!(config.secure);
+        assert!(!config.secure);
+        assert_eq!(config.max_body_bytes, 2_097_152);
         // Defaults preserved
         assert_eq!(config.field_name, "_csrf_token");
         assert_eq!(config.header_name, "x-csrf-token");
