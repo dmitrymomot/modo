@@ -12,15 +12,20 @@ pub struct SenderProfile {
 impl SenderProfile {
     /// Format as `"Name <email>"` for the From header.
     ///
-    /// Strips control characters and angle brackets from the name to prevent
-    /// header injection.
+    /// Strips control characters and angle brackets from the name, and control
+    /// characters from the email, to prevent header injection.
     pub fn format_address(&self) -> String {
         let safe_name: String = self
             .from_name
             .chars()
             .filter(|c| !c.is_control() && *c != '<' && *c != '>')
             .collect();
-        format!("{} <{}>", safe_name.trim(), self.from_email)
+        let safe_email: String = self
+            .from_email
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        format!("{} <{}>", safe_name.trim(), safe_email.trim())
     }
 }
 
@@ -29,17 +34,17 @@ impl SenderProfile {
 pub struct MailMessage {
     pub from: String,
     pub reply_to: Option<String>,
-    pub to: String,
+    pub to: Vec<String>,
     pub subject: String,
     pub html: String,
     pub text: String,
 }
 
 /// Builder for requesting a templated email send.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SendEmail {
     pub(crate) template: String,
-    pub(crate) to: String,
+    pub(crate) to: Vec<String>,
     pub(crate) locale: Option<String>,
     pub(crate) sender: Option<SenderProfile>,
     pub(crate) context: HashMap<String, serde_json::Value>,
@@ -49,11 +54,17 @@ impl SendEmail {
     pub fn new(template: &str, to: &str) -> Self {
         Self {
             template: template.to_string(),
-            to: to.to_string(),
+            to: vec![to.to_string()],
             locale: None,
             sender: None,
             context: HashMap::new(),
         }
+    }
+
+    /// Add an additional recipient.
+    pub fn to(mut self, to: &str) -> Self {
+        self.to.push(to.to_string());
+        self
     }
 
     pub fn locale(mut self, locale: &str) -> Self {
@@ -81,7 +92,7 @@ impl SendEmail {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendEmailPayload {
     pub template: String,
-    pub to: String,
+    pub to: Vec<String>,
     pub locale: Option<String>,
     pub sender: Option<SenderProfile>,
     pub context: HashMap<String, serde_json::Value>,
@@ -139,15 +150,45 @@ mod tests {
     }
 
     #[test]
+    fn sender_profile_sanitizes_name() {
+        let profile = SenderProfile {
+            from_name: "Evil<script>".to_string(),
+            from_email: "hi@acme.com".to_string(),
+            reply_to: None,
+        };
+        assert_eq!(profile.format_address(), "Evilscript <hi@acme.com>");
+    }
+
+    #[test]
+    fn sender_profile_sanitizes_email() {
+        let profile = SenderProfile {
+            from_name: "Acme".to_string(),
+            from_email: "hi@acme.com\r\nBcc: evil@x.com".to_string(),
+            reply_to: None,
+        };
+        let addr = profile.format_address();
+        assert!(!addr.contains('\r'));
+        assert!(!addr.contains('\n'));
+    }
+
+    #[test]
     fn send_email_builder() {
         let email = SendEmail::new("welcome", "user@test.com")
             .locale("de")
             .var("name", "Hans")
             .var("code", "1234");
         assert_eq!(email.template, "welcome");
-        assert_eq!(email.to, "user@test.com");
+        assert_eq!(email.to, vec!["user@test.com"]);
         assert_eq!(email.locale.as_deref(), Some("de"));
         assert_eq!(email.context.len(), 2);
+    }
+
+    #[test]
+    fn send_email_multiple_recipients() {
+        let email = SendEmail::new("welcome", "a@test.com")
+            .to("b@test.com")
+            .to("c@test.com");
+        assert_eq!(email.to, vec!["a@test.com", "b@test.com", "c@test.com"]);
     }
 
     #[test]
@@ -165,6 +206,7 @@ mod tests {
     #[test]
     fn payload_roundtrip() {
         let email = SendEmail::new("welcome", "u@t.com")
+            .to("v@t.com")
             .locale("en")
             .var("name", "Alice");
         let payload = SendEmailPayload::from(email);
@@ -172,8 +214,9 @@ mod tests {
         let back: SendEmailPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(back.template, "welcome");
         assert_eq!(back.locale.as_deref(), Some("en"));
+        assert_eq!(back.to, vec!["u@t.com", "v@t.com"]);
 
         let email_back = SendEmail::from(back);
-        assert_eq!(email_back.to, "u@t.com");
+        assert_eq!(email_back.to, vec!["u@t.com", "v@t.com"]);
     }
 }

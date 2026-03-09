@@ -5,20 +5,13 @@ use std::sync::{Arc, Mutex};
 
 /// A transport that captures sent messages for assertions.
 struct CapturingTransport {
-    messages: Arc<Mutex<Vec<MailMessage>>>,
+    messages: Mutex<Vec<MailMessage>>,
 }
 
 #[async_trait::async_trait]
 impl MailTransport for CapturingTransport {
     async fn send(&self, message: &MailMessage) -> Result<(), modo::Error> {
-        self.messages.lock().unwrap().push(MailMessage {
-            from: message.from.clone(),
-            reply_to: message.reply_to.clone(),
-            to: message.to.clone(),
-            subject: message.subject.clone(),
-            html: message.html.clone(),
-            text: message.text.clone(),
-        });
+        self.messages.lock().unwrap().push(message.clone());
         Ok(())
     }
 }
@@ -35,14 +28,15 @@ async fn end_to_end_filesystem_template() {
     )
     .unwrap();
 
-    let messages = Arc::new(Mutex::new(Vec::new()));
-    let provider = Box::new(FilesystemProvider::new(path.to_str().unwrap()));
-    let layout = LayoutEngine::new(path.to_str().unwrap());
+    let transport = Arc::new(CapturingTransport {
+        messages: Mutex::new(Vec::new()),
+    });
+    let provider: Arc<dyn modo_email::TemplateProvider> =
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap()));
+    let layout = Arc::new(LayoutEngine::new(path.to_str().unwrap()));
 
     let mailer = Mailer::new(
-        Box::new(CapturingTransport {
-            messages: messages.clone(),
-        }),
+        transport.clone(),
         provider,
         SenderProfile {
             from_name: "App".to_string(),
@@ -54,14 +48,14 @@ async fn end_to_end_filesystem_template() {
 
     mailer
         .send(
-            SendEmail::new("welcome", "user@example.com")
+            &SendEmail::new("welcome", "user@example.com")
                 .var("name", "Alice")
                 .var("url", "https://app.com/dashboard"),
         )
         .await
         .unwrap();
 
-    let msgs = messages.lock().unwrap();
+    let msgs = transport.messages.lock().unwrap();
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs[0].subject, "Welcome Alice!");
     assert!(msgs[0].html.contains("Alice"));
@@ -87,26 +81,26 @@ async fn end_to_end_locale_fallback() {
     )
     .unwrap();
 
-    let messages = Arc::new(Mutex::new(Vec::new()));
+    let transport = Arc::new(CapturingTransport {
+        messages: Mutex::new(Vec::new()),
+    });
     let mailer = Mailer::new(
-        Box::new(CapturingTransport {
-            messages: messages.clone(),
-        }),
-        Box::new(FilesystemProvider::new(path.to_str().unwrap())),
+        transport.clone(),
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap())),
         SenderProfile {
             from_name: "App".to_string(),
             from_email: "app@test.com".to_string(),
             reply_to: None,
         },
-        LayoutEngine::new(path.to_str().unwrap()),
+        Arc::new(LayoutEngine::new(path.to_str().unwrap())),
     );
 
     // Request "fr" locale — should fall back to root template.
     mailer
-        .send(SendEmail::new("reset", "user@example.com").locale("fr"))
+        .send(&SendEmail::new("reset", "user@example.com").locale("fr"))
         .await
         .unwrap();
 
-    let msgs = messages.lock().unwrap();
+    let msgs = transport.messages.lock().unwrap();
     assert_eq!(msgs[0].subject, "Reset password");
 }

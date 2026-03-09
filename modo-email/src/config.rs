@@ -48,6 +48,8 @@ pub struct SmtpConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
+    /// When `true`, uses STARTTLS (port 587). When `false`, no TLS at all.
+    /// Implicit TLS / SMTPS (port 465) is not currently supported.
     pub tls: bool,
 }
 

@@ -3,22 +3,27 @@ use crate::template::layout::LayoutEngine;
 use crate::template::{TemplateProvider, markdown, vars};
 use crate::transport::MailTransport;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// High-level email service that ties together template loading, variable
 /// substitution, Markdown rendering, layout wrapping, and transport delivery.
+///
+/// `Mailer` is cheaply cloneable via internal `Arc`s, making it safe to share
+/// across async tasks and register as a modo service.
+#[derive(Clone)]
 pub struct Mailer {
-    transport: Box<dyn MailTransport>,
-    templates: Box<dyn TemplateProvider>,
+    transport: Arc<dyn MailTransport>,
+    templates: Arc<dyn TemplateProvider>,
     default_sender: SenderProfile,
-    layout_engine: LayoutEngine,
+    layout_engine: Arc<LayoutEngine>,
 }
 
 impl Mailer {
     pub fn new(
-        transport: Box<dyn MailTransport>,
-        templates: Box<dyn TemplateProvider>,
+        transport: Arc<dyn MailTransport>,
+        templates: Arc<dyn TemplateProvider>,
         default_sender: SenderProfile,
-        layout_engine: LayoutEngine,
+        layout_engine: Arc<LayoutEngine>,
     ) -> Self {
         Self {
             transport,
@@ -37,12 +42,15 @@ impl Mailer {
         let subject = vars::substitute(&template.subject, &email.context);
         let body = vars::substitute(&template.body, &email.context);
 
-        // Render Markdown body to HTML (with optional custom button color).
+        // Validate brand_color as a CSS hex color; fall back to default if invalid.
         let button_color = email
             .context
             .get("brand_color")
             .and_then(|v| v.as_str())
+            .filter(|s| is_valid_hex_color(s))
             .unwrap_or("#4F46E5");
+
+        // Render Markdown body to HTML (with optional custom button color).
         let html_body = markdown::render_markdown_with_color(&body, button_color);
         let text = markdown::render_plain_text(&body);
 
@@ -70,33 +78,31 @@ impl Mailer {
     }
 
     /// Render and deliver an email via the configured transport.
-    pub async fn send(&self, email: SendEmail) -> Result<(), modo::Error> {
-        let message = self.render(&email)?;
+    pub async fn send(&self, email: &SendEmail) -> Result<(), modo::Error> {
+        let message = self.render(email)?;
         self.transport.send(&message).await
     }
+}
+
+/// Validate that a string is a valid CSS hex color (#RGB or #RRGGBB).
+fn is_valid_hex_color(s: &str) -> bool {
+    let s = s.as_bytes();
+    matches!(s.len(), 4 | 7) && s[0] == b'#' && s[1..].iter().all(|b| b.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::template::EmailTemplate;
-    use std::sync::{Arc, Mutex};
 
     struct MockTransport {
-        sent: Arc<Mutex<Vec<MailMessage>>>,
+        sent: std::sync::Mutex<Vec<MailMessage>>,
     }
 
     #[async_trait::async_trait]
     impl MailTransport for MockTransport {
         async fn send(&self, message: &MailMessage) -> Result<(), modo::Error> {
-            self.sent.lock().unwrap().push(MailMessage {
-                from: message.from.clone(),
-                reply_to: message.reply_to.clone(),
-                to: message.to.clone(),
-                subject: message.subject.clone(),
-                html: message.html.clone(),
-                text: message.text.clone(),
-            });
+            self.sent.lock().unwrap().push(message.clone());
             Ok(())
         }
     }
@@ -113,28 +119,34 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn send_renders_and_delivers() {
-        let sent = Arc::new(Mutex::new(Vec::new()));
-        let mailer = Mailer::new(
-            Box::new(MockTransport { sent: sent.clone() }),
-            Box::new(MockTemplateProvider),
+    fn test_mailer(transport: Arc<dyn MailTransport>) -> Mailer {
+        Mailer::new(
+            transport,
+            Arc::new(MockTemplateProvider),
             SenderProfile {
                 from_name: "Test".to_string(),
                 from_email: "test@test.com".to_string(),
                 reply_to: None,
             },
-            LayoutEngine::builtin_only(),
-        );
+            Arc::new(LayoutEngine::builtin_only()),
+        )
+    }
+
+    #[tokio::test]
+    async fn send_renders_and_delivers() {
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let mailer = test_mailer(transport.clone());
 
         mailer
-            .send(SendEmail::new("welcome", "user@test.com").var("name", "Alice"))
+            .send(&SendEmail::new("welcome", "user@test.com").var("name", "Alice"))
             .await
             .unwrap();
 
-        let messages = sent.lock().unwrap();
+        let messages = transport.sent.lock().unwrap();
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].to, "user@test.com");
+        assert_eq!(messages[0].to, vec!["user@test.com"]);
         assert_eq!(messages[0].subject, "Hello Alice");
         assert!(messages[0].html.contains("Alice"));
         assert!(messages[0].html.contains("role=\"presentation\"")); // button
@@ -143,16 +155,18 @@ mod tests {
 
     #[tokio::test]
     async fn sender_override() {
-        let sent = Arc::new(Mutex::new(Vec::new()));
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
         let mailer = Mailer::new(
-            Box::new(MockTransport { sent: sent.clone() }),
-            Box::new(MockTemplateProvider),
+            transport.clone(),
+            Arc::new(MockTemplateProvider),
             SenderProfile {
                 from_name: "Default".to_string(),
                 from_email: "default@test.com".to_string(),
                 reply_to: None,
             },
-            LayoutEngine::builtin_only(),
+            Arc::new(LayoutEngine::builtin_only()),
         );
 
         let custom_sender = SenderProfile {
@@ -163,32 +177,24 @@ mod tests {
 
         mailer
             .send(
-                SendEmail::new("welcome", "user@test.com")
+                &SendEmail::new("welcome", "user@test.com")
                     .sender(&custom_sender)
                     .var("name", "Bob"),
             )
             .await
             .unwrap();
 
-        let messages = sent.lock().unwrap();
+        let messages = transport.sent.lock().unwrap();
         assert!(messages[0].from.contains("tenant@custom.com"));
         assert_eq!(messages[0].reply_to.as_deref(), Some("support@custom.com"));
     }
 
     #[test]
     fn render_returns_message_without_sending() {
-        let mailer = Mailer::new(
-            Box::new(MockTransport {
-                sent: Arc::new(Mutex::new(Vec::new())),
-            }),
-            Box::new(MockTemplateProvider),
-            SenderProfile {
-                from_name: "Test".to_string(),
-                from_email: "test@test.com".to_string(),
-                reply_to: None,
-            },
-            LayoutEngine::builtin_only(),
-        );
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let mailer = test_mailer(transport);
 
         let msg = mailer
             .render(&SendEmail::new("welcome", "user@test.com").var("name", "Charlie"))
@@ -197,5 +203,52 @@ mod tests {
         assert_eq!(msg.subject, "Hello Charlie");
         assert!(msg.html.contains("Charlie"));
         assert!(msg.text.contains("Charlie"));
+    }
+
+    #[test]
+    fn mailer_is_clone() {
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let mailer = test_mailer(transport);
+        let _clone = mailer.clone();
+    }
+
+    #[test]
+    fn invalid_brand_color_falls_back_to_default() {
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let mailer = test_mailer(transport);
+
+        let msg = mailer
+            .render(
+                &SendEmail::new("welcome", "user@test.com")
+                    .var("name", "Alice")
+                    .var("brand_color", "red;position:absolute"),
+            )
+            .unwrap();
+
+        // Should use default color, not the injection attempt
+        assert!(msg.html.contains("#4F46E5"));
+        assert!(!msg.html.contains("position:absolute"));
+    }
+
+    #[test]
+    fn valid_brand_color_is_used() {
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let mailer = test_mailer(transport);
+
+        let msg = mailer
+            .render(
+                &SendEmail::new("welcome", "user@test.com")
+                    .var("name", "Alice")
+                    .var("brand_color", "#ff6600"),
+            )
+            .unwrap();
+
+        assert!(msg.html.contains("#ff6600"));
     }
 }

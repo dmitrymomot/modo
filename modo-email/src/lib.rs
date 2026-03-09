@@ -18,11 +18,13 @@ pub use config::SmtpConfig;
 pub use template::filesystem::FilesystemProvider;
 pub use template::layout::LayoutEngine;
 
+use std::sync::Arc;
+
 /// Create a Mailer with the default FilesystemProvider.
 pub fn mailer(config: &EmailConfig) -> Result<Mailer, modo::Error> {
     let transport = transport::transport(config)?;
-    let provider = Box::new(FilesystemProvider::new(&config.templates_path));
-    let layout = LayoutEngine::new(&config.templates_path);
+    let provider = Arc::new(FilesystemProvider::new(&config.templates_path));
+    let layout = Arc::new(LayoutEngine::new(&config.templates_path));
     let sender = SenderProfile {
         from_name: config.default_from_name.clone(),
         from_email: config.default_from_email.clone(),
@@ -34,10 +36,10 @@ pub fn mailer(config: &EmailConfig) -> Result<Mailer, modo::Error> {
 /// Create a Mailer with a custom TemplateProvider.
 pub fn mailer_with(
     config: &EmailConfig,
-    provider: Box<dyn TemplateProvider>,
+    provider: Arc<dyn TemplateProvider>,
 ) -> Result<Mailer, modo::Error> {
     let transport = transport::transport(config)?;
-    let layout = LayoutEngine::new(&config.templates_path);
+    let layout = Arc::new(LayoutEngine::new(&config.templates_path));
     let sender = SenderProfile {
         from_name: config.default_from_name.clone(),
         from_email: config.default_from_email.clone(),

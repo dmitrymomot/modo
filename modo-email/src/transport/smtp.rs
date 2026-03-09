@@ -37,11 +37,13 @@ impl MailTransport for SmtpTransport {
                     .parse()
                     .map_err(|e| modo::Error::internal(format!("Invalid from address: {e}")))?,
             )
-            .to(message
-                .to
-                .parse()
-                .map_err(|e| modo::Error::internal(format!("Invalid to address: {e}")))?)
             .subject(&message.subject);
+
+        for recipient in &message.to {
+            builder = builder.to(recipient
+                .parse()
+                .map_err(|e| modo::Error::internal(format!("Invalid to address: {e}")))?);
+        }
 
         if let Some(ref reply_to) = message.reply_to {
             builder =

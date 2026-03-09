@@ -22,7 +22,7 @@ impl MailTransport for ResendTransport {
     async fn send(&self, message: &MailMessage) -> Result<(), modo::Error> {
         let mut body = serde_json::json!({
             "from": message.from,
-            "to": [message.to],
+            "to": message.to,
             "subject": message.subject,
             "html": message.html,
             "text": message.text,

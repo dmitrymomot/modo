@@ -75,7 +75,7 @@ pub fn render_plain_text(markdown: &str) -> String {
             Event::Text(t) if in_link => {
                 link_text.push_str(&t);
             }
-            Event::End(TagEnd::Link) => {
+            Event::End(TagEnd::Link) if in_link => {
                 in_link = false;
                 let display = link_text.strip_prefix(BUTTON_PREFIX).unwrap_or(&link_text);
                 text.push_str(&format!("{display} ({link_url})"));

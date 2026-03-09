@@ -5,6 +5,7 @@ pub mod smtp;
 
 use crate::config::EmailConfig;
 use crate::message::MailMessage;
+use std::sync::Arc;
 
 #[async_trait::async_trait]
 pub trait MailTransport: Send + Sync + 'static {
@@ -12,11 +13,11 @@ pub trait MailTransport: Send + Sync + 'static {
 }
 
 /// Create the appropriate transport backend based on config.
-pub fn transport(config: &EmailConfig) -> Result<Box<dyn MailTransport>, modo::Error> {
+pub fn transport(config: &EmailConfig) -> Result<Arc<dyn MailTransport>, modo::Error> {
     match config.transport {
         #[cfg(feature = "smtp")]
         crate::config::TransportBackend::Smtp => {
-            Ok(Box::new(smtp::SmtpTransport::new(&config.smtp)?))
+            Ok(Arc::new(smtp::SmtpTransport::new(&config.smtp)?))
         }
         #[cfg(not(feature = "smtp"))]
         crate::config::TransportBackend::Smtp => Err(modo::Error::internal(
@@ -25,7 +26,7 @@ pub fn transport(config: &EmailConfig) -> Result<Box<dyn MailTransport>, modo::E
 
         #[cfg(feature = "resend")]
         crate::config::TransportBackend::Resend => {
-            Ok(Box::new(resend::ResendTransport::new(&config.resend)?))
+            Ok(Arc::new(resend::ResendTransport::new(&config.resend)?))
         }
         #[cfg(not(feature = "resend"))]
         crate::config::TransportBackend::Resend => Err(modo::Error::internal(
