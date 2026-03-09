@@ -44,22 +44,30 @@ impl PasswordHasher {
     /// Hash a password using Argon2id with a random salt.
     ///
     /// Returns a PHC-formatted string that embeds algorithm, params, salt, and hash.
-    pub fn hash_password(&self, password: &str) -> Result<String, modo::Error> {
-        let params = Params::new(
-            self.config.memory_cost_kib,
-            self.config.time_cost,
-            self.config.parallelism,
-            None,
-        )
-        .map_err(|e| modo::Error::internal(format!("invalid argon2 params: {e}")))?;
+    /// Runs on a blocking thread to avoid stalling the Tokio runtime.
+    pub async fn hash_password(&self, password: &str) -> Result<String, modo::Error> {
+        let config = self.config.clone();
+        let password = password.to_owned();
 
-        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-        let salt = SaltString::generate(&mut OsRng);
+        tokio::task::spawn_blocking(move || {
+            let params = Params::new(
+                config.memory_cost_kib,
+                config.time_cost,
+                config.parallelism,
+                None,
+            )
+            .map_err(|e| modo::Error::internal(format!("invalid argon2 params: {e}")))?;
 
-        argon2
-            .hash_password(password.as_bytes(), &salt)
-            .map(|h| h.to_string())
-            .map_err(|e| modo::Error::internal(format!("password hashing failed: {e}")))
+            let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+            let salt = SaltString::generate(&mut OsRng);
+
+            argon2
+                .hash_password(password.as_bytes(), &salt)
+                .map(|h| h.to_string())
+                .map_err(|e| modo::Error::internal(format!("password hashing failed: {e}")))
+        })
+        .await
+        .map_err(|e| modo::Error::internal(format!("password hashing task failed: {e}")))?
     }
 
     /// Verify a password against a PHC-formatted hash string.
@@ -68,17 +76,27 @@ impl PasswordHasher {
     /// Returns `Err` only for malformed hash strings.
     ///
     /// Note: uses the params embedded in the hash, not `self.config`.
-    pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool, modo::Error> {
-        let parsed = PasswordHash::new(hash)
-            .map_err(|e| modo::Error::internal(format!("invalid password hash: {e}")))?;
+    /// Runs on a blocking thread to avoid stalling the Tokio runtime.
+    pub async fn verify_password(&self, password: &str, hash: &str) -> Result<bool, modo::Error> {
+        let password = password.to_owned();
+        let hash = hash.to_owned();
 
-        match Argon2::default().verify_password(password.as_bytes(), &parsed) {
-            Ok(()) => Ok(true),
-            Err(argon2::password_hash::Error::Password) => Ok(false),
-            Err(e) => Err(modo::Error::internal(format!(
-                "password verification failed: {e}"
-            ))),
-        }
+        tokio::task::spawn_blocking(move || {
+            let parsed = PasswordHash::new(&hash)
+                .map_err(|e| modo::Error::internal(format!("invalid password hash: {e}")))?;
+
+            match Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::default())
+                .verify_password(password.as_bytes(), &parsed)
+            {
+                Ok(()) => Ok(true),
+                Err(argon2::password_hash::Error::Password) => Ok(false),
+                Err(e) => Err(modo::Error::internal(format!(
+                    "password verification failed: {e}"
+                ))),
+            }
+        })
+        .await
+        .map_err(|e| modo::Error::internal(format!("password verification task failed: {e}")))?
     }
 }
 
@@ -92,41 +110,49 @@ impl Default for PasswordHasher {
 mod tests {
     use super::*;
 
-    #[test]
-    fn hash_and_verify_roundtrip() {
+    #[tokio::test]
+    async fn hash_and_verify_roundtrip() {
         let hasher = PasswordHasher::default();
         let hash = hasher
             .hash_password("correct-horse-battery-staple")
+            .await
             .unwrap();
         assert!(
             hasher
                 .verify_password("correct-horse-battery-staple", &hash)
+                .await
                 .unwrap()
         );
     }
 
-    #[test]
-    fn verify_wrong_password() {
+    #[tokio::test]
+    async fn verify_wrong_password() {
         let hasher = PasswordHasher::default();
-        let hash = hasher.hash_password("correct-password").unwrap();
-        assert!(!hasher.verify_password("wrong-password", &hash).unwrap());
+        let hash = hasher.hash_password("correct-password").await.unwrap();
+        assert!(
+            !hasher
+                .verify_password("wrong-password", &hash)
+                .await
+                .unwrap()
+        );
     }
 
-    #[test]
-    fn verify_invalid_hash() {
+    #[tokio::test]
+    async fn verify_invalid_hash() {
         let hasher = PasswordHasher::default();
         assert!(
             hasher
                 .verify_password("password", "not-a-valid-hash")
+                .await
                 .is_err()
         );
     }
 
-    #[test]
-    fn hash_produces_unique_outputs() {
+    #[tokio::test]
+    async fn hash_produces_unique_outputs() {
         let hasher = PasswordHasher::default();
-        let h1 = hasher.hash_password("same-password").unwrap();
-        let h2 = hasher.hash_password("same-password").unwrap();
+        let h1 = hasher.hash_password("same-password").await.unwrap();
+        let h2 = hasher.hash_password("same-password").await.unwrap();
         assert_ne!(h1, h2);
     }
 
@@ -147,15 +173,20 @@ mod tests {
         assert_eq!(config.parallelism, 1); // default
     }
 
-    #[test]
-    fn hash_with_custom_config() {
+    #[tokio::test]
+    async fn hash_with_custom_config() {
         let config = PasswordConfig {
             memory_cost_kib: 8192,
             time_cost: 1,
             parallelism: 1,
         };
         let hasher = PasswordHasher::new(config);
-        let hash = hasher.hash_password("test-password").unwrap();
-        assert!(hasher.verify_password("test-password", &hash).unwrap());
+        let hash = hasher.hash_password("test-password").await.unwrap();
+        assert!(
+            hasher
+                .verify_password("test-password", &hash)
+                .await
+                .unwrap()
+        );
     }
 }
