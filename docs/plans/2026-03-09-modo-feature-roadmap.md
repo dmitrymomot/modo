@@ -40,17 +40,6 @@ In-memory and optional Redis support for performance-critical paths.
 - Cache invalidation helpers
 - Use cases: session caching, rate limit state, query result caching
 
-### 5. Static File Serving — in `modo` core or `modo-static`
-
-Serve CSS, JS, images, fonts.
-
-- Dev mode: serve from filesystem directory (live reload friendly)
-- Prod mode: embedded via `rust-embed` (single binary)
-- Configurable path prefix (e.g., `/static/`, `/assets/`)
-- Cache headers (ETag, Cache-Control)
-- MIME type detection
-- Gzip/Brotli compression (pre-compressed or on-the-fly)
-
 ## Tier 2 — Strong Value-Add
 
 ### 6. `modo-sse` — Server-Sent Events
@@ -121,16 +110,6 @@ Developer experience improvement for project bootstrapping.
 - `modo generate entity <name>` — create entity with migration
 - `modo generate job <name>` — create background job
 - Template-based generation
-
-### 13. OpenAPI Generation
-
-Auto-generate API documentation from handler signatures.
-
-- Extract routes, methods, path params from handler macros
-- Request/response schema from Serialize/Deserialize types
-- Serve Swagger UI at `/docs`
-- Export OpenAPI 3.1 JSON/YAML
-- Integration with validation rules for schema constraints
 
 ### 14. Metrics & Observability — `modo-metrics`
 
