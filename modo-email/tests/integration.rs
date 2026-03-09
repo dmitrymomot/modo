@@ -68,9 +68,11 @@ async fn end_to_end_filesystem_template() {
     assert!(msgs[0].html.contains("Launch Dashboard"));
     assert!(msgs[0].html.contains("https://app.com/dashboard"));
     assert!(msgs[0].html.contains("role=\"presentation\"")); // button rendered
-    assert!(msgs[0]
-        .text
-        .contains("Launch Dashboard (https://app.com/dashboard)"));
+    assert!(
+        msgs[0]
+            .text
+            .contains("Launch Dashboard (https://app.com/dashboard)")
+    );
 }
 
 #[tokio::test]
