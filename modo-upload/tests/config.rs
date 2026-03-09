@@ -11,7 +11,10 @@ fn test_default_config() {
 async fn test_local_storage_from_default_config() {
     let config = UploadConfig::default();
     let storage = modo_upload::storage(&config);
-    assert!(storage.is_ok(), "storage() should succeed with default config");
+    assert!(
+        storage.is_ok(),
+        "storage() should succeed with default config"
+    );
 }
 
 #[test]

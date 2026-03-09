@@ -104,9 +104,7 @@ pub fn storage(config: &crate::config::UploadConfig) -> Result<Box<dyn FileStora
                 builder = builder.secret_access_key(&s3.secret_access_key);
             }
             let op = ::opendal::Operator::new(builder)
-                .map_err(|e| {
-                    modo::Error::internal(format!("Failed to configure S3 storage: {e}"))
-                })?
+                .map_err(|e| modo::Error::internal(format!("Failed to configure S3 storage: {e}")))?
                 .finish();
             Ok(Box::new(self::opendal::OpendalStorage::new(op)))
         }
