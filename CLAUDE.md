@@ -77,8 +77,8 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Member extractor: `Member<T, M>` — requires tenant + auth + membership (404/401/403), caches via `ResolvedMember<M>`
 - Tenant context: `TenantContext<T, M, U>` — composite extractor providing tenant, member, user, tenants list, and role
 - Built-in resolvers: `SubdomainResolver`, `HeaderResolver`, `PathPrefixResolver` — all take a lookup closure
-- Role guards: `#[allow_roles("admin", "owner")]` / `#[deny_roles("viewer")]` — proc macros emitting `#[middleware(...)]`
-- Role guard functions: `modo_tenant::guard::require_roles::<T, M>(&["admin"])` / `exclude_roles::<T, M>(&["viewer"])` — middleware factories
+- Role guards: `#[allow_roles(MyTenant, MyMember, "admin", "owner")]` / `#[deny_roles(MyTenant, MyMember, "viewer")]` — first two args are tenant/member types
+- Role guard functions: `modo_tenant::guard::require_roles::<T, M>(&["admin"])` / `exclude_roles::<T, M>(&["viewer"])` — middleware factories, use with `from_fn`
 - Template context layer: `TenantContextLayer<T, M>` — auto-injects `tenant`, `member`, `tenants`, `role` into `TemplateContext` (feature = "templates")
 - User context layer: `modo_auth::context_layer::UserContextLayer<U>` — auto-injects `user` into `TemplateContext` (feature = "templates")
 
@@ -98,3 +98,4 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Type-erased services: use object-safe bridge trait (`XxxDyn`) + `Arc<dyn XxxDyn<T>>` wrapper — see `TenantResolverService` / `MemberProviderService` pattern
 - Tenant `MemberProvider::role()` needs explicit lifetime: `fn role<'a>(&'a self, member: &'a M) -> &'a str`
 - Session user ID access: use `modo_session::user_id_from_extensions(&parts.extensions)` — returns `Option<String>`
+- AppState in middleware: modo injects `AppState` into request extensions globally — handler-level middleware reads via `parts.extensions.get::<AppState>()`
