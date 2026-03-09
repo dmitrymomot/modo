@@ -75,10 +75,12 @@ where
 
 /// Middleware function: allow only specified roles.
 ///
-/// Usage with modo handler macro:
+/// Reads `AppState` from request extensions (injected by modo's global middleware).
+///
+/// Usage:
 /// ```ignore
+/// #[allow_roles(MyTenant, MyMember, "admin", "owner")]
 /// #[modo::handler(GET, "/admin")]
-/// #[middleware(modo_tenant::guard::require_roles::<MyTenant, MyMember>(&["admin", "owner"]))]
 /// async fn admin_page() -> &'static str { "admin" }
 /// ```
 pub fn require_roles<T, M>(
@@ -102,17 +104,15 @@ where
         Box::pin(async move {
             let (mut parts, body) = req.into_parts();
 
-            let state = parts
-                .extensions
-                .get::<modo::app::AppState>()
-                .cloned()
-                .or_else(|| {
-                    // Try to get from the extensions that axum injects
-                    None
-                });
+            let state = match parts.extensions.get::<modo::app::AppState>().cloned() {
+                Some(s) => s,
+                None => {
+                    return Error::internal("Role guard: AppState not in extensions")
+                        .into_response();
+                }
+            };
 
-            // Get services from state or extensions
-            let (tenant_svc, member_svc) = if let Some(ref state) = state {
+            let (tenant_svc, member_svc) = {
                 let t = state.services.get::<TenantResolverService<T>>();
                 let m = state.services.get::<MemberProviderService<M, T>>();
                 match (t, m) {
@@ -122,8 +122,6 @@ where
                             .into_response();
                     }
                 }
-            } else {
-                return Error::internal("Role guard: AppState not available").into_response();
             };
 
             match resolve_role::<T, M>(&mut parts.extensions, &tenant_svc, &member_svc).await {
@@ -142,6 +140,15 @@ where
 }
 
 /// Middleware function: deny specified roles.
+///
+/// Reads `AppState` from request extensions (injected by modo's global middleware).
+///
+/// Usage:
+/// ```ignore
+/// #[deny_roles(MyTenant, MyMember, "viewer")]
+/// #[modo::handler(GET, "/admin")]
+/// async fn admin_page() -> &'static str { "admin" }
+/// ```
 pub fn exclude_roles<T, M>(
     roles: &'static [&'static str],
 ) -> impl Fn(
@@ -163,9 +170,15 @@ where
         Box::pin(async move {
             let (mut parts, body) = req.into_parts();
 
-            let state = parts.extensions.get::<modo::app::AppState>().cloned();
+            let state = match parts.extensions.get::<modo::app::AppState>().cloned() {
+                Some(s) => s,
+                None => {
+                    return Error::internal("Role guard: AppState not in extensions")
+                        .into_response();
+                }
+            };
 
-            let (tenant_svc, member_svc) = if let Some(ref state) = state {
+            let (tenant_svc, member_svc) = {
                 let t = state.services.get::<TenantResolverService<T>>();
                 let m = state.services.get::<MemberProviderService<M, T>>();
                 match (t, m) {
@@ -175,8 +188,6 @@ where
                             .into_response();
                     }
                 }
-            } else {
-                return Error::internal("Role guard: AppState not available").into_response();
             };
 
             match resolve_role::<T, M>(&mut parts.extensions, &tenant_svc, &member_svc).await {
@@ -197,6 +208,16 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TenantResolver;
+    use crate::cache::ResolvedTenant;
+    use crate::member::MemberProvider;
+    use crate::resolver::TenantResolverService;
+    use modo::app::{AppState, ServiceRegistry};
+    use modo::axum::Router;
+    use modo::axum::body::Body;
+    use modo::axum::http::{Request, StatusCode};
+    use modo::axum::routing::get;
+    use tower::ServiceExt;
 
     #[test]
     fn allowed_passes_matching_role() {
@@ -206,17 +227,158 @@ mod tests {
     #[test]
     fn allowed_rejects_non_matching_role() {
         let err = check_allowed("viewer", &["admin", "owner"]).unwrap_err();
-        assert_eq!(err.status_code(), modo::axum::http::StatusCode::FORBIDDEN);
+        assert_eq!(err.status_code(), StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn denied_blocks_matching_role() {
         let err = check_denied("viewer", &["viewer"]).unwrap_err();
-        assert_eq!(err.status_code(), modo::axum::http::StatusCode::FORBIDDEN);
+        assert_eq!(err.status_code(), StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn denied_passes_non_matching_role() {
         assert!(check_denied("admin", &["viewer"]).is_ok());
+    }
+
+    // -- Integration test types --
+
+    #[derive(Clone, Debug, serde::Serialize)]
+    struct TestTenant {
+        id: String,
+    }
+
+    impl crate::HasTenantId for TestTenant {
+        fn tenant_id(&self) -> &str {
+            &self.id
+        }
+    }
+
+    #[derive(Clone, Debug, serde::Serialize)]
+    struct TestMember {
+        role: String,
+    }
+
+    struct TestResolver;
+
+    impl TenantResolver for TestResolver {
+        type Tenant = TestTenant;
+
+        async fn resolve(
+            &self,
+            _parts: &modo::axum::http::request::Parts,
+        ) -> Result<Option<Self::Tenant>, modo::Error> {
+            Ok(None)
+        }
+    }
+
+    struct TestMemberProvider;
+
+    impl MemberProvider for TestMemberProvider {
+        type Member = TestMember;
+        type Tenant = TestTenant;
+
+        async fn find_member(
+            &self,
+            _user_id: &str,
+            _tenant_id: &str,
+        ) -> Result<Option<Self::Member>, modo::Error> {
+            Ok(None)
+        }
+
+        async fn list_tenants(&self, _user_id: &str) -> Result<Vec<Self::Tenant>, modo::Error> {
+            Ok(vec![])
+        }
+
+        fn role<'a>(&'a self, member: &'a Self::Member) -> &'a str {
+            &member.role
+        }
+    }
+
+    fn test_state() -> AppState {
+        let services = ServiceRegistry::new()
+            .with(TenantResolverService::new(TestResolver))
+            .with(MemberProviderService::new(TestMemberProvider));
+        AppState {
+            services,
+            server_config: Default::default(),
+            cookie_key: axum_extra::extract::cookie::Key::generate(),
+        }
+    }
+
+    /// Build a request with AppState, ResolvedRole, and ResolvedTenant pre-populated.
+    fn test_request(state: &AppState, role: &str) -> Request<Body> {
+        let mut req = Request::builder().uri("/").body(Body::empty()).unwrap();
+        req.extensions_mut().insert(state.clone());
+        req.extensions_mut().insert(ResolvedRole(role.to_string()));
+        req.extensions_mut()
+            .insert(ResolvedTenant(Arc::new(TestTenant {
+                id: "t-1".to_string(),
+            })));
+        req
+    }
+
+    #[tokio::test]
+    async fn require_roles_middleware_allows_matching_role() {
+        let state = test_state();
+        let app = Router::<AppState>::new()
+            .route("/", get(|| async { "ok" }))
+            .route_layer(modo::axum::middleware::from_fn(require_roles::<
+                TestTenant,
+                TestMember,
+            >(&[
+                "admin", "owner",
+            ])))
+            .with_state(state.clone());
+
+        let resp = app.oneshot(test_request(&state, "admin")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn require_roles_middleware_rejects_non_matching_role() {
+        let state = test_state();
+        let app = Router::<AppState>::new()
+            .route("/", get(|| async { "ok" }))
+            .route_layer(modo::axum::middleware::from_fn(require_roles::<
+                TestTenant,
+                TestMember,
+            >(&[
+                "admin", "owner",
+            ])))
+            .with_state(state.clone());
+
+        let resp = app.oneshot(test_request(&state, "viewer")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn exclude_roles_middleware_allows_non_matching_role() {
+        let state = test_state();
+        let app = Router::<AppState>::new()
+            .route("/", get(|| async { "ok" }))
+            .route_layer(modo::axum::middleware::from_fn(exclude_roles::<
+                TestTenant,
+                TestMember,
+            >(&["viewer"])))
+            .with_state(state.clone());
+
+        let resp = app.oneshot(test_request(&state, "admin")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn exclude_roles_middleware_rejects_matching_role() {
+        let state = test_state();
+        let app = Router::<AppState>::new()
+            .route("/", get(|| async { "ok" }))
+            .route_layer(modo::axum::middleware::from_fn(exclude_roles::<
+                TestTenant,
+                TestMember,
+            >(&["viewer"])))
+            .with_state(state.clone());
+
+        let resp = app.oneshot(test_request(&state, "viewer")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 }
