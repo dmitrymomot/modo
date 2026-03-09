@@ -65,19 +65,10 @@ impl Default for SmtpConfig {
 }
 
 #[cfg(feature = "resend")]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct ResendConfig {
     pub api_key: String,
-}
-
-#[cfg(feature = "resend")]
-impl Default for ResendConfig {
-    fn default() -> Self {
-        Self {
-            api_key: String::new(),
-        }
-    }
 }
 
 #[cfg(test)]

@@ -30,8 +30,7 @@ pub fn render_markdown_with_color(markdown: &str, button_color: &str) -> String 
             }
             Event::End(TagEnd::Link) if in_link => {
                 in_link = false;
-                if link_text.starts_with(BUTTON_PREFIX) {
-                    let label = &link_text[BUTTON_PREFIX.len()..];
+                if let Some(label) = link_text.strip_prefix(BUTTON_PREFIX) {
                     html.push_str(&render_button(label, &link_url, button_color));
                 } else {
                     html.push_str(&format!(
@@ -78,11 +77,7 @@ pub fn render_plain_text(markdown: &str) -> String {
             }
             Event::End(TagEnd::Link) => {
                 in_link = false;
-                let display = if link_text.starts_with(BUTTON_PREFIX) {
-                    &link_text[BUTTON_PREFIX.len()..]
-                } else {
-                    &link_text
-                };
+                let display = link_text.strip_prefix(BUTTON_PREFIX).unwrap_or(&link_text);
                 text.push_str(&format!("{display} ({link_url})"));
             }
             Event::Text(t) => text.push_str(&t),

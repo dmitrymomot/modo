@@ -1,8 +1,8 @@
 mod config;
 mod mailer;
 mod message;
-mod template;
-mod transport;
+pub mod template;
+pub mod transport;
 
 pub use config::{EmailConfig, TransportBackend};
 pub use mailer::Mailer;
@@ -10,13 +10,13 @@ pub use message::{MailMessage, SendEmail, SendEmailPayload, SenderProfile};
 pub use template::{EmailTemplate, TemplateProvider};
 pub use transport::MailTransport;
 
-#[cfg(feature = "smtp")]
-pub use config::SmtpConfig;
 #[cfg(feature = "resend")]
 pub use config::ResendConfig;
+#[cfg(feature = "smtp")]
+pub use config::SmtpConfig;
 
-use template::filesystem::FilesystemProvider;
-use template::layout::LayoutEngine;
+pub use template::filesystem::FilesystemProvider;
+pub use template::layout::LayoutEngine;
 
 /// Create a Mailer with the default FilesystemProvider.
 pub fn mailer(config: &EmailConfig) -> Result<Mailer, modo::Error> {

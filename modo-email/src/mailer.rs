@@ -1,6 +1,6 @@
 use crate::message::{MailMessage, SendEmail, SenderProfile};
 use crate::template::layout::LayoutEngine;
-use crate::template::{markdown, vars, TemplateProvider};
+use crate::template::{TemplateProvider, markdown, vars};
 use crate::transport::MailTransport;
 use std::collections::HashMap;
 
@@ -49,10 +49,7 @@ impl Mailer {
         // Wrap HTML body in a layout.
         let layout_name = template.layout.as_deref().unwrap_or("default");
         let mut layout_ctx: HashMap<String, serde_json::Value> = email.context.clone();
-        layout_ctx.insert(
-            "content".to_string(),
-            serde_json::Value::String(html_body),
-        );
+        layout_ctx.insert("content".to_string(), serde_json::Value::String(html_body));
         layout_ctx.insert(
             "subject".to_string(),
             serde_json::Value::String(subject.clone()),
