@@ -27,6 +27,8 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - `modo-templates/` — MiniJinja template engine (views, render layer, context injection)
 - `modo-templates-macros/` — `#[view("path", htmx = "path")]` proc macro
 - `modo-csrf/` — CSRF protection (double-submit cookie, HMAC-signed tokens)
+- `modo-tenant/` — multi-tenancy with RBAC (tenant resolution, member/role management, extractors, guards)
+- `modo-tenant-macros/` — `#[allow_roles]` / `#[deny_roles]` proc macros
 
 ## Commands
 
@@ -69,6 +71,16 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Jobs: `#[modo_jobs::job(queue = "...", priority = N, max_attempts = N, timeout = "5m")]`
 - Cron jobs: `#[modo_jobs::job(cron = "0 0 * * * *", timeout = "5m")]` — in-memory only
 - Upload storage: `UploadConfig { backend, path, s3 }` — YAML-deserializable, `modo_upload::storage(&config)?` returns `Box<dyn FileStorage>`
+- Tenant resolution: implement `HasTenantId` + `TenantResolver` traits, wrap in `TenantResolverService::new(resolver)`, register as service
+- Tenant extractors: `Tenant<T>` (required, 404 if missing), `OptionalTenant<T>` (optional), both cache via `ResolvedTenant<T>` extension
+- Member provider: implement `MemberProvider` trait (`find_member`, `list_tenants`, `role`), wrap in `MemberProviderService::new(provider)`
+- Member extractor: `Member<T, M>` — requires tenant + auth + membership (404/401/403), caches via `ResolvedMember<M>`
+- Tenant context: `TenantContext<T, M, U>` — composite extractor providing tenant, member, user, tenants list, and role
+- Built-in resolvers: `SubdomainResolver`, `HeaderResolver`, `PathPrefixResolver` — all take a lookup closure
+- Role guards: `#[allow_roles("admin", "owner")]` / `#[deny_roles("viewer")]` — proc macros emitting `#[middleware(...)]`
+- Role guard functions: `modo_tenant::guard::require_roles::<T, M>(&["admin"])` / `exclude_roles::<T, M>(&["viewer"])` — middleware factories
+- Template context layer: `TenantContextLayer<T, M>` — auto-injects `tenant`, `member`, `tenants`, `role` into `TemplateContext` (feature = "templates")
+- User context layer: `modo_auth::context_layer::UserContextLayer<U>` — auto-injects `user` into `TemplateContext` (feature = "templates")
 
 ## Gotchas
 
@@ -83,3 +95,6 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Use official documentation only when researching dependencies
 - Session IDs: ULID (no UUID anywhere)
 - Testing Tower middleware: use `Router::new().route(...).layer(mw).oneshot(request)` pattern — no AppState needed, handler reads `Extension<T>` from extensions
+- Type-erased services: use object-safe bridge trait (`XxxDyn`) + `Arc<dyn XxxDyn<T>>` wrapper — see `TenantResolverService` / `MemberProviderService` pattern
+- Tenant `MemberProvider::role()` needs explicit lifetime: `fn role<'a>(&'a self, member: &'a M) -> &'a str`
+- Session user ID access: use `modo_session::user_id_from_extensions(&parts.extensions)` — returns `Option<String>`
