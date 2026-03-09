@@ -26,3 +26,4 @@ opendal = { version = "0.53", optional = true, features = ["services-s3"] }
 tokio = { version = "1", features = ["full", "test-util"] }
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
