@@ -1,5 +1,7 @@
-use sea_orm::{ConnectionTrait, DbErr, EntityTrait, FromQueryResult, Select};
-use sea_orm::{IntoIdentity, QuerySelect};
+use sea_orm::sea_query::IntoValueTuple;
+use sea_orm::{
+    ConnectionTrait, DbErr, EntityTrait, FromQueryResult, IntoIdentity, QuerySelect, Select,
+};
 use serde::{Deserialize, Serialize};
 
 // ── Offset / Page Pagination ────────────────────────────────────────────────
@@ -62,7 +64,7 @@ pub async fn paginate<E, M>(
 ) -> Result<PageResult<M>, DbErr>
 where
     E: EntityTrait<Model = M>,
-    M: FromQueryResult + Sized + Send + Sync,
+    M: FromQueryResult + Send + Sync,
 {
     let (page, per_page) = params.clamped();
     let offset = (page - 1) * per_page;
@@ -87,23 +89,42 @@ where
 
 /// Query-string parameters for cursor-based pagination.
 ///
+/// `V` is the cursor value type — defaults to `String` (for ULID/NanoID keys).
+/// For integer PKs use `CursorParams<i64>`.
+///
 /// `per_page` is clamped to `[1, 100]`. If both `after` and `before` are set,
 /// `after` takes precedence.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-pub struct CursorParams {
+#[derive(Debug, Clone, Deserialize)]
+pub struct CursorParams<V = String> {
+    #[serde(default)]
     pub per_page: Option<u64>,
-    pub after: Option<String>,
-    pub before: Option<String>,
+    #[serde(default)]
+    pub after: Option<V>,
+    #[serde(default)]
+    pub before: Option<V>,
 }
 
-impl CursorParams {
+impl<V> Default for CursorParams<V> {
+    fn default() -> Self {
+        Self {
+            per_page: None,
+            after: None,
+            before: None,
+        }
+    }
+}
+
+impl<V> CursorParams<V> {
     fn clamped_per_page(&self) -> u64 {
         self.per_page.unwrap_or(20).clamp(1, 100)
     }
 }
 
 /// Paginated response for cursor-based pagination.
+///
+/// Cursor values are always strings in the response (for JSON serialization).
+/// Use `next_cursor` with `?after=` and `prev_cursor` with `?before=` to
+/// navigate forward and backward respectively.
 #[derive(Debug, Clone, Serialize)]
 pub struct CursorResult<T> {
     pub data: Vec<T>,
@@ -134,17 +155,22 @@ impl<T> CursorResult<T> {
 ///
 /// - `cursor_column` — the column to paginate on (e.g. `Column::Id`).
 /// - `cursor_fn` — extracts the cursor string from a model instance.
-pub async fn paginate_cursor<E, M, C, F>(
+///
+/// The cursor value type `V` (from `CursorParams<V>`) must match the column's
+/// database type. Use `CursorParams` (default `String`) for string columns
+/// (ULID, NanoID) or `CursorParams<i64>` for integer columns.
+pub async fn paginate_cursor<E, M, C, V, F>(
     query: Select<E>,
     cursor_column: C,
     cursor_fn: F,
     db: &impl ConnectionTrait,
-    params: &CursorParams,
+    params: &CursorParams<V>,
 ) -> Result<CursorResult<M>, DbErr>
 where
     E: EntityTrait<Model = M>,
-    M: FromQueryResult + Sized + Send + Sync,
+    M: FromQueryResult + Send + Sync,
     C: IntoIdentity,
+    V: IntoValueTuple + Clone,
     F: Fn(&M) -> String,
 {
     let per_page = params.clamped_per_page();
@@ -169,7 +195,7 @@ where
 
     if is_backward {
         has_prev = rows.len() as u64 > per_page;
-        has_next = true; // we navigated backward from a later page
+        has_next = !rows.is_empty();
         if has_prev {
             rows.remove(0);
         }
