@@ -1,0 +1,169 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Sender identity for outgoing emails.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SenderProfile {
+    pub from_name: String,
+    pub from_email: String,
+    pub reply_to: Option<String>,
+}
+
+impl SenderProfile {
+    /// Format as `"Name <email>"` for the From header.
+    pub fn format_address(&self) -> String {
+        format!("{} <{}>", self.from_name, self.from_email)
+    }
+}
+
+/// A fully-rendered email ready for transport.
+pub struct MailMessage {
+    pub from: String,
+    pub reply_to: Option<String>,
+    pub to: String,
+    pub subject: String,
+    pub html: String,
+    pub text: String,
+}
+
+/// Builder for requesting a templated email send.
+pub struct SendEmail {
+    pub(crate) template: String,
+    pub(crate) to: String,
+    pub(crate) locale: Option<String>,
+    pub(crate) sender: Option<SenderProfile>,
+    pub(crate) context: HashMap<String, serde_json::Value>,
+}
+
+impl SendEmail {
+    pub fn new(template: &str, to: &str) -> Self {
+        Self {
+            template: template.to_string(),
+            to: to.to_string(),
+            locale: None,
+            sender: None,
+            context: HashMap::new(),
+        }
+    }
+
+    pub fn locale(mut self, locale: &str) -> Self {
+        self.locale = Some(locale.to_string());
+        self
+    }
+
+    pub fn sender(mut self, sender: &SenderProfile) -> Self {
+        self.sender = Some(sender.clone());
+        self
+    }
+
+    pub fn var(mut self, key: &str, value: impl Into<serde_json::Value>) -> Self {
+        self.context.insert(key.to_string(), value.into());
+        self
+    }
+
+    pub fn context(mut self, ctx: &HashMap<String, serde_json::Value>) -> Self {
+        self.context.extend(ctx.clone());
+        self
+    }
+}
+
+/// Serializable version of `SendEmail` for job payloads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendEmailPayload {
+    pub template: String,
+    pub to: String,
+    pub locale: Option<String>,
+    pub sender: Option<SenderProfile>,
+    pub context: HashMap<String, serde_json::Value>,
+}
+
+impl From<SendEmail> for SendEmailPayload {
+    fn from(e: SendEmail) -> Self {
+        Self {
+            template: e.template,
+            to: e.to,
+            locale: e.locale,
+            sender: e.sender,
+            context: e.context,
+        }
+    }
+}
+
+impl From<SendEmailPayload> for SendEmail {
+    fn from(p: SendEmailPayload) -> Self {
+        Self {
+            template: p.template,
+            to: p.to,
+            locale: p.locale,
+            sender: p.sender,
+            context: p.context,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sender_profile_serialization_roundtrip() {
+        let profile = SenderProfile {
+            from_name: "Acme".to_string(),
+            from_email: "hi@acme.com".to_string(),
+            reply_to: Some("support@acme.com".to_string()),
+        };
+        let json = serde_json::to_string(&profile).unwrap();
+        let back: SenderProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.from_name, "Acme");
+        assert_eq!(back.reply_to, Some("support@acme.com".to_string()));
+    }
+
+    #[test]
+    fn sender_profile_format_address() {
+        let profile = SenderProfile {
+            from_name: "Acme Corp".to_string(),
+            from_email: "hi@acme.com".to_string(),
+            reply_to: None,
+        };
+        assert_eq!(profile.format_address(), "Acme Corp <hi@acme.com>");
+    }
+
+    #[test]
+    fn send_email_builder() {
+        let email = SendEmail::new("welcome", "user@test.com")
+            .locale("de")
+            .var("name", "Hans")
+            .var("code", "1234");
+        assert_eq!(email.template, "welcome");
+        assert_eq!(email.to, "user@test.com");
+        assert_eq!(email.locale.as_deref(), Some("de"));
+        assert_eq!(email.context.len(), 2);
+    }
+
+    #[test]
+    fn send_email_context_merge() {
+        let mut brand = HashMap::new();
+        brand.insert("logo".to_string(), serde_json::json!("https://logo.png"));
+        brand.insert("color".to_string(), serde_json::json!("#ff0000"));
+
+        let email = SendEmail::new("welcome", "u@t.com")
+            .context(&brand)
+            .var("name", "Alice");
+        assert_eq!(email.context.len(), 3);
+    }
+
+    #[test]
+    fn payload_roundtrip() {
+        let email = SendEmail::new("welcome", "u@t.com")
+            .locale("en")
+            .var("name", "Alice");
+        let payload = SendEmailPayload::from(email);
+        let json = serde_json::to_string(&payload).unwrap();
+        let back: SendEmailPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.template, "welcome");
+        assert_eq!(back.locale.as_deref(), Some("en"));
+
+        let email_back = SendEmail::from(back);
+        assert_eq!(email_back.to, "u@t.com");
+    }
+}
