@@ -85,11 +85,8 @@ async fn main(
     let jobs = modo_jobs::start(&db, &config.jobs, services).await?;
 
     app.server_config(config.server)
-        .service(db)
-        .service(jobs.clone())
-        .on_shutdown(move || async move {
-            jobs.shutdown().await;
-        })
+        .managed_service(db)
+        .managed_service(jobs)
         .run()
         .await
 }

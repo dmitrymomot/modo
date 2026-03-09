@@ -107,5 +107,8 @@ async fn main(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = modo_db::connect(&config.database).await?;
     modo_db::sync_and_migrate(&db).await?;
-    app.server_config(config.server).service(db).run().await
+    app.server_config(config.server)
+        .managed_service(db)
+        .run()
+        .await
 }
