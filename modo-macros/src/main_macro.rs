@@ -19,14 +19,14 @@ pub fn expand(_attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         ));
     }
 
-    if func.sig.inputs.len() > 1 {
+    if func.sig.inputs.len() != 2 {
         return Err(syn::Error::new_spanned(
             &func.sig.inputs,
-            "#[modo::main] accepts at most one parameter: the AppBuilder",
+            "#[modo::main] requires exactly two parameters: the AppBuilder and a config type, e.g. async fn main(app: AppBuilder, config: MyConfig)",
         ));
     }
 
-    // Extract the parameter name for the AppBuilder binding (default: `app`)
+    // Extract the parameter name for the AppBuilder binding
     let app_ident = if let Some(FnArg::Typed(pat_type)) = func.sig.inputs.first() {
         if let Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
             pat_ident.ident.clone()
@@ -37,10 +37,28 @@ pub fn expand(_attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             ));
         }
     } else {
-        syn::Ident::new("app", proc_macro2::Span::call_site())
+        unreachable!() // already validated len == 2
     };
 
-    let func_body = &func.block;
+    // Extract the config parameter name and type
+    let (config_ident, config_ty) = if let Some(FnArg::Typed(pat_type)) =
+        func.sig.inputs.iter().nth(1)
+    {
+        let ident = if let Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+            pat_ident.ident.clone()
+        } else {
+            return Err(syn::Error::new_spanned(
+                &pat_type.pat,
+                "#[modo::main] config parameter must be a simple identifier, e.g. `config: AppConfig`",
+            ));
+        };
+        let ty = pat_type.ty.clone();
+        (ident, ty)
+    } else {
+        unreachable!() // already validated len == 2
+    };
+
+    let stmts = &func.block.stmts;
 
     Ok(quote! {
         fn main() {
@@ -59,7 +77,10 @@ pub fn expand(_attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     let #app_ident = modo::app::AppBuilder::new();
 
                     let __modo_result: std::result::Result<(), Box<dyn std::error::Error>> = {
-                        async move #func_body
+                        async move {
+                            let #config_ident: #config_ty = modo::config::load_or_default()?;
+                            #(#stmts)*
+                        }
                     }.await;
 
                     if let Err(e) = __modo_result {
