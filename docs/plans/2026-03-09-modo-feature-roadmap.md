@@ -4,7 +4,7 @@ Prioritized feature list for the modo framework, grouped by impact for micro-Saa
 
 ## Tier 1 — High Impact
 
-### 1. `modo-mail` — Email Sending
+### `modo-mail` — Email Sending
 
 Email is table stakes for SaaS — signup confirmation, password reset, notifications.
 
@@ -17,7 +17,7 @@ Email is table stakes for SaaS — signup confirmation, password reset, notifica
 - `Mail` extractor for handlers
 - Async sending (direct or via `modo-jobs` queue)
 
-### 2. `modo-cache` — Caching Layer
+### `modo-cache` — Caching Layer
 
 In-memory and optional Redis support for performance-critical paths.
 
@@ -32,7 +32,7 @@ In-memory and optional Redis support for performance-critical paths.
 
 ## Tier 2 — Strong Value-Add
 
-### 3. `modo-sse` — Server-Sent Events
+### `modo-sse` — Server-Sent Events
 
 Real-time server-to-client streaming. Simpler than WebSockets, works with HTMX.
 
@@ -43,7 +43,23 @@ Real-time server-to-client streaming. Simpler than WebSockets, works with HTMX.
 - Automatic client reconnection support
 - Use cases: job progress, live notifications, dashboard updates
 
-### 4. API Key Authentication — in `modo-auth`
+### OAuth2 Provider — in `modo-auth`
+
+Social login and external identity providers. Table stakes for consumer-facing SaaS.
+
+- `OAuthProvider` trait with pluggable providers (Google, GitHub, Apple, etc.)
+- `OAuthConfig` — YAML-deserializable provider configuration (client ID, secret, scopes, endpoints)
+- Authorization URL generation + PKCE support
+- Callback handler: exchange code → tokens
+- `OAuthTokenSet` storage: access token, refresh token, expiry, scopes
+- Automatic token refresh when access token expired (transparent to application code)
+- `OAuthUserProvider` wrapper — implements `UserProvider`, handles token lifecycle
+- Token storage in session data (JSON) or pluggable `TokenStore` trait
+- Account linking: connect OAuth identity to existing user
+- Multi-provider support per user
+- Integration with `modo-session` for login flow state (CSRF via `state` param)
+
+### API Key Authentication — in `modo-auth`
 
 Many SaaS products expose APIs to customers.
 
@@ -55,7 +71,7 @@ Many SaaS products expose APIs to customers.
 - Key rotation (create new before revoking old)
 - `ApiKeyProvider` trait (similar to `UserProvider`)
 
-### 5. Audit Logging — `modo-audit`
+### Audit Logging — `modo-audit`
 
 Who did what when. Compliance requirement for B2B SaaS.
 
@@ -70,7 +86,7 @@ Who did what when. Compliance requirement for B2B SaaS.
 
 ## Tier 3 — Nice to Have
 
-### 6. WebSocket Support — `modo-ws`
+### WebSocket Support — `modo-ws`
 
 Full-duplex communication for interactive features.
 
@@ -80,7 +96,7 @@ Full-duplex communication for interactive features.
 - Authentication on upgrade
 - Use cases: chat, collaborative editing, live cursors
 
-### 7. CLI Scaffolding Tool
+### CLI Scaffolding Tool
 
 Developer experience improvement for project bootstrapping.
 
@@ -90,7 +106,7 @@ Developer experience improvement for project bootstrapping.
 - `modo generate job <name>` — create background job
 - Template-based generation
 
-### 8. Metrics & Observability — `modo-metrics`
+### Metrics & Observability — `modo-metrics`
 
 Production monitoring and alerting.
 
@@ -101,7 +117,7 @@ Production monitoring and alerting.
 - Custom application metrics API
 - Optional Grafana dashboard templates
 
-### 9. Webhook Delivery — `modo-webhooks`
+### Webhook Delivery — `modo-webhooks`
 
 Outbound webhooks for SaaS integrations.
 
@@ -112,7 +128,7 @@ Outbound webhooks for SaaS integrations.
 - Event filtering per endpoint
 - Payload serialization (JSON)
 
-### 10. RBAC / Permissions
+### RBAC / Permissions
 
 Role-based access control for multi-user apps.
 
