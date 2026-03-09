@@ -4,19 +4,6 @@ Prioritized feature list for the modo framework, grouped by impact for micro-Saa
 
 ## Tier 1 — High Impact
 
-### `modo-mail` — Email Sending
-
-Email is table stakes for SaaS — signup confirmation, password reset, notifications.
-
-- `MailTransport` trait with pluggable backends
-- SMTP backend (lettre)
-- HTTP API backends (Resend, AWS SES)
-- `MailMessage` builder: to, from, subject, body (text + HTML)
-- Integration with `modo-templates` for HTML email rendering
-- Integration with `modo-i18n` for localized emails
-- `Mail` extractor for handlers
-- Async sending (direct or via `modo-jobs` queue)
-
 ### `modo-cache` — Caching Layer
 
 In-memory and optional Redis support for performance-critical paths.

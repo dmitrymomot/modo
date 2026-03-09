@@ -26,7 +26,7 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - `modo-i18n-macros/` — `t!()` translation macro
 - `modo-templates/` — MiniJinja template engine (views, render layer, context injection)
 - `modo-templates-macros/` — `#[view("path", htmx = "path")]` proc macro
-- `modo-csrf/` — CSRF protection (planned)
+- `modo-csrf/` — CSRF protection (double-submit cookie, HMAC-signed tokens)
 
 ## Commands
 
