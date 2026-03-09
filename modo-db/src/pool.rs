@@ -1,5 +1,7 @@
 use sea_orm::DatabaseConnection;
+use std::future::Future;
 use std::ops::Deref;
+use std::pin::Pin;
 
 /// Newtype around `sea_orm::DatabaseConnection`.
 ///
@@ -20,5 +22,15 @@ impl Deref for DbPool {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl modo::GracefulShutdown for DbPool {
+    fn graceful_shutdown(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(async {
+            if let Err(e) = self.0.close_by_ref().await {
+                tracing::warn!("Error closing database pool: {e}");
+            }
+        })
     }
 }
