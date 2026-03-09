@@ -43,18 +43,7 @@ Real-time server-to-client streaming. Simpler than WebSockets, works with HTMX.
 - Automatic client reconnection support
 - Use cases: job progress, live notifications, dashboard updates
 
-### 4. Pagination Helpers — in `modo-db`
-
-Every API and list view needs pagination.
-
-- `Paginated<T>` response wrapper
-- Offset-based pagination (page + per_page)
-- Cursor-based pagination (for stable ordering)
-- `PaginationParams` extractor (from query string)
-- Response metadata: total count, page count, next/prev cursors
-- Works with SeaORM `Select` queries
-
-### 5. API Key Authentication — in `modo-auth`
+### 4. API Key Authentication — in `modo-auth`
 
 Many SaaS products expose APIs to customers.
 
@@ -66,7 +55,7 @@ Many SaaS products expose APIs to customers.
 - Key rotation (create new before revoking old)
 - `ApiKeyProvider` trait (similar to `UserProvider`)
 
-### 6. Audit Logging — `modo-audit`
+### 5. Audit Logging — `modo-audit`
 
 Who did what when. Compliance requirement for B2B SaaS.
 
@@ -81,7 +70,7 @@ Who did what when. Compliance requirement for B2B SaaS.
 
 ## Tier 3 — Nice to Have
 
-### 7. WebSocket Support — `modo-ws`
+### 6. WebSocket Support — `modo-ws`
 
 Full-duplex communication for interactive features.
 
@@ -91,7 +80,7 @@ Full-duplex communication for interactive features.
 - Authentication on upgrade
 - Use cases: chat, collaborative editing, live cursors
 
-### 8. CLI Scaffolding Tool
+### 7. CLI Scaffolding Tool
 
 Developer experience improvement for project bootstrapping.
 
@@ -101,7 +90,7 @@ Developer experience improvement for project bootstrapping.
 - `modo generate job <name>` — create background job
 - Template-based generation
 
-### 9. Metrics & Observability — `modo-metrics`
+### 8. Metrics & Observability — `modo-metrics`
 
 Production monitoring and alerting.
 
@@ -112,7 +101,7 @@ Production monitoring and alerting.
 - Custom application metrics API
 - Optional Grafana dashboard templates
 
-### 10. Webhook Delivery — `modo-webhooks`
+### 9. Webhook Delivery — `modo-webhooks`
 
 Outbound webhooks for SaaS integrations.
 
@@ -123,7 +112,7 @@ Outbound webhooks for SaaS integrations.
 - Event filtering per endpoint
 - Payload serialization (JSON)
 
-### 11. RBAC / Permissions
+### 10. RBAC / Permissions
 
 Role-based access control for multi-user apps.
 
