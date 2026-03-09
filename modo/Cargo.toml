@@ -14,7 +14,7 @@ tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = [
     "trace", "cors", "timeout", "limit",
-    "compression-full", "catch-panic", "sensitive-headers"
+    "compression-full", "catch-panic", "sensitive-headers", "fs"
 ] }
 dashmap = "6"
 serde = { version = "1", features = ["derive"] }
@@ -46,9 +46,15 @@ chrono = { version = "0.4", features = ["serde"] }
 modo-templates = { path = "../modo-templates", optional = true }
 modo-templates-macros = { path = "../modo-templates-macros", optional = true }
 
+# Static files (optional)
+rust-embed = { version = "8", features = ["axum"], optional = true }
+mime_guess = { version = "2", optional = true }
+
 [features]
 default = []
 templates = ["dep:modo-templates", "dep:modo-templates-macros"]
+static-fs = []
+static-embed = ["dep:rust-embed", "dep:mime_guess"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

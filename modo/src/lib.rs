@@ -14,6 +14,8 @@ pub mod request_id;
 pub mod router;
 pub mod sanitize;
 pub mod shutdown;
+#[cfg(any(feature = "static-fs", feature = "static-embed"))]
+pub mod static_files;
 pub mod validate;
 
 pub use config::{HttpConfig, RateLimitConfig, SecurityHeadersConfig, TrailingSlash};
@@ -22,6 +24,8 @@ pub use error::{Error, ErrorContext, ErrorHandlerFn, ErrorHandlerRegistration, H
 pub use middleware::{ClientIp, RateLimitInfo};
 pub use request_id::RequestId;
 pub use shutdown::{GracefulShutdown, ShutdownPhase};
+#[cfg(any(feature = "static-fs", feature = "static-embed"))]
+pub use static_files::StaticConfig;
 
 // Re-exports for macro-generated code
 pub use axum;
@@ -30,6 +34,8 @@ pub use chrono;
 pub use inventory;
 #[cfg(feature = "templates")]
 pub use modo_templates;
+#[cfg(feature = "static-embed")]
+pub use rust_embed;
 pub use serde;
 pub use serde_json;
 pub use tokio;

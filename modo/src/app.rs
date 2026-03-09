@@ -88,6 +88,8 @@ pub struct AppBuilder {
     override_rate_limit: Option<Option<RateLimitConfig>>,
     override_trailing_slash: Option<TrailingSlash>,
     override_maintenance: Option<bool>,
+    #[cfg(any(feature = "static-fs", feature = "static-embed"))]
+    static_router: Option<(String, axum::Router<()>)>,
 }
 
 impl AppBuilder {
@@ -106,6 +108,8 @@ impl AppBuilder {
             override_rate_limit: None,
             override_trailing_slash: None,
             override_maintenance: None,
+            #[cfg(any(feature = "static-fs", feature = "static-embed"))]
+            static_router: None,
         }
     }
 
@@ -223,6 +227,35 @@ impl AppBuilder {
 
     pub fn maintenance(mut self, enabled: bool) -> Self {
         self.override_maintenance = Some(enabled);
+        self
+    }
+
+    /// Serve static files from the filesystem (dev-friendly).
+    #[cfg(feature = "static-fs")]
+    pub fn static_files(mut self, config: crate::static_files::StaticConfig) -> Self {
+        assert!(
+            config.prefix.starts_with('/'),
+            "static files prefix must start with '/'"
+        );
+        let prefix = config.prefix.clone();
+        let router = crate::static_files::build_fs_service(&config);
+        self.static_router = Some((prefix, router));
+        self
+    }
+
+    /// Serve static files embedded in the binary (prod-friendly).
+    #[cfg(feature = "static-embed")]
+    pub fn static_files_embedded<E: rust_embed::Embed + 'static>(
+        mut self,
+        config: crate::static_files::StaticConfig,
+    ) -> Self {
+        assert!(
+            config.prefix.starts_with('/'),
+            "static files prefix must start with '/'"
+        );
+        let prefix = config.prefix.clone();
+        let router = crate::static_files::build_embed_service::<E>(&config);
+        self.static_router = Some((prefix, router));
         self
     }
 
@@ -345,6 +378,13 @@ impl AppBuilder {
                 // Module routes without a ModuleRegistration — nest at root
                 router = router.merge(sub_router);
             }
+        }
+
+        // Mount static file service (before fallback so it takes precedence)
+        #[cfg(any(feature = "static-fs", feature = "static-embed"))]
+        if let Some((prefix, static_svc)) = self.static_router {
+            router = router.nest_service(&prefix, static_svc);
+            info!("Serving static files at {}", prefix);
         }
 
         // Fallback for unmatched routes — returns a proper JSON 404
