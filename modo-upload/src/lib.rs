@@ -7,19 +7,14 @@ pub mod storage;
 mod stream;
 mod validate;
 
-pub use config::{StorageBackend, UploadConfig};
 #[cfg(feature = "opendal")]
 pub use config::S3Config;
+pub use config::{StorageBackend, UploadConfig};
 pub use extractor::MultipartForm;
 pub use file::UploadedFile;
-pub use storage::{storage, FileStorage, StoredFile};
+pub use storage::{FileStorage, StoredFile, storage};
 pub use stream::UploadStream;
 pub use validate::{gb, kb, mb};
-
-#[cfg(feature = "local")]
-pub use storage::local::LocalStorage;
-#[cfg(feature = "opendal")]
-pub use storage::opendal::OpendalStorage;
 
 /// Trait for parsing a struct from `multipart/form-data`.
 #[async_trait::async_trait]
