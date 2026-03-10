@@ -1,22 +1,14 @@
-#[cfg(feature = "templates")]
 use crate::HasTenantId;
-#[cfg(feature = "templates")]
 use crate::resolver::TenantResolverService;
 
-#[cfg(feature = "templates")]
 use futures_util::future::BoxFuture;
-#[cfg(feature = "templates")]
 use modo::axum::http::Request;
-#[cfg(feature = "templates")]
 use modo::templates::TemplateContext;
-#[cfg(feature = "templates")]
 use std::task::{Context, Poll};
-#[cfg(feature = "templates")]
 use tower::{Layer, Service};
 
 /// Layer that injects the resolved tenant into TemplateContext.
 /// Graceful: skips if no tenant is resolved.
-#[cfg(feature = "templates")]
 pub struct TenantContextLayer<T>
 where
     T: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static,
@@ -24,7 +16,6 @@ where
     tenant_svc: TenantResolverService<T>,
 }
 
-#[cfg(feature = "templates")]
 impl<T> Clone for TenantContextLayer<T>
 where
     T: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static,
@@ -36,7 +27,6 @@ where
     }
 }
 
-#[cfg(feature = "templates")]
 impl<T> TenantContextLayer<T>
 where
     T: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static,
@@ -46,7 +36,6 @@ where
     }
 }
 
-#[cfg(feature = "templates")]
 impl<S, T> Layer<S> for TenantContextLayer<T>
 where
     T: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static,
@@ -61,7 +50,6 @@ where
     }
 }
 
-#[cfg(feature = "templates")]
 #[derive(Clone)]
 pub struct TenantContextMiddleware<S, T>
 where
@@ -71,7 +59,6 @@ where
     tenant_svc: TenantResolverService<T>,
 }
 
-#[cfg(feature = "templates")]
 impl<S, ReqBody, ResBody, T> Service<Request<ReqBody>> for TenantContextMiddleware<S, T>
 where
     S: Service<Request<ReqBody>, Response = modo::axum::http::Response<ResBody>>
@@ -99,7 +86,7 @@ where
             let (mut parts, body) = request.into_parts();
 
             // Resolve tenant (cached or fresh)
-            let tenant: Option<T> =
+            let tenant =
                 match crate::extractor::resolve_and_cache(&mut parts, &tenant_svc).await {
                     Ok(t) => t,
                     Err(e) => {
@@ -112,7 +99,7 @@ where
             if let Some(ref t) = tenant
                 && let Some(ctx) = parts.extensions.get_mut::<TemplateContext>()
             {
-                ctx.insert("tenant", modo::minijinja::Value::from_serialize(t));
+                ctx.insert("tenant", modo::minijinja::Value::from_serialize(&**t));
             }
 
             let request = Request::from_parts(parts, body);
@@ -121,7 +108,7 @@ where
     }
 }
 
-#[cfg(all(test, feature = "templates"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::resolver::TenantResolverService;
