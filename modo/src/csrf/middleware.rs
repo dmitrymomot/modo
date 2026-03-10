@@ -35,6 +35,12 @@ pub async fn csrf_protection(
             &default_config
         }
     };
+
+    if let Err(msg) = config.validate() {
+        tracing::error!("Invalid CSRF configuration: {msg}");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+
     let key = state.server_config.secret_key.as_bytes();
     let method = request.method().clone();
 
