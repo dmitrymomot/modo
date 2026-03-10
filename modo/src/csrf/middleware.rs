@@ -241,7 +241,9 @@ mod tests {
     use tower::ServiceExt;
 
     fn test_state() -> AppState {
-        let services = ServiceRegistry::new().with(CsrfConfig::default());
+        let services = ServiceRegistry::new()
+            .with(CsrfConfig::default())
+            .with(CookieConfig::default());
 
         let server_config = ServerConfig {
             secret_key: "test-secret-key-for-csrf".to_string(),
