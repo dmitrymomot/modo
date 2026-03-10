@@ -6,8 +6,8 @@ mod main_macro;
 mod middleware;
 mod module;
 mod sanitize;
-mod validate;
 mod t_macro;
+mod validate;
 mod view;
 
 /// Attribute macro for declaring HTTP handlers with auto-registration.

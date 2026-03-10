@@ -1,8 +1,8 @@
-pub use modo_macros::{Sanitize, Validate, error_handler, handler, main, module};
 #[cfg(feature = "i18n")]
 pub use modo_macros::t;
 #[cfg(feature = "templates")]
 pub use modo_macros::view;
+pub use modo_macros::{Sanitize, Validate, error_handler, handler, main, module};
 
 pub mod app;
 pub mod config;

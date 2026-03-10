@@ -52,7 +52,9 @@ impl TemplateEngine {
 /// auto-reload on every render. In prod, no loader is set — use
 /// `minijinja-embed` to compile templates into the binary and load them
 /// via `engine.env_mut()` before registering the engine as a service.
-pub fn engine(config: &crate::templates::TemplateConfig) -> Result<TemplateEngine, crate::templates::TemplateError> {
+pub fn engine(
+    config: &crate::templates::TemplateConfig,
+) -> Result<TemplateEngine, crate::templates::TemplateError> {
     let mut env = Environment::new();
 
     if config.strict {
