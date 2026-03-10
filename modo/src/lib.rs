@@ -13,6 +13,7 @@ pub(crate) mod cookie_util;
 
 pub mod app;
 pub mod config;
+pub mod cookies;
 pub mod cors;
 #[cfg(feature = "csrf")]
 pub mod csrf;
