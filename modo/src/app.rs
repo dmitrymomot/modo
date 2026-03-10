@@ -544,7 +544,7 @@ impl AppBuilder {
         // --- i18n layer (auto-wired) ---
         #[cfg(feature = "i18n")]
         if let Some(store) = state.services.get::<crate::i18n::TranslationStore>() {
-            router = router.layer(crate::i18n::layer(store));
+            router = router.layer(crate::i18n::layer(store, app_config.cookies.clone()));
         }
 
         // --- Rate limiter (global) ---
