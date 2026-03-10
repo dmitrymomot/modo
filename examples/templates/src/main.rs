@@ -40,8 +40,5 @@ async fn main(
             }
         });
 
-    app.server_config(config)
-        .service(engine)
-        .run()
-        .await
+    app.server_config(config).service(engine).run().await
 }
