@@ -33,8 +33,10 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     };
 
     Ok(quote! {
+        #[allow(dead_code)]
         #func
 
+        #[allow(unexpected_cfgs)]
         #[cfg(feature = "templates")]
         ::modo::inventory::submit! {
             ::modo::templates::TemplateFunctionEntry {
