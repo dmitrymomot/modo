@@ -7,7 +7,7 @@ struct ContactForm {
     #[validate(required, email)]
     email: String,
 
-    #[clean(trim, strip_html)]
+    #[clean(trim, strip_html_tags)]
     #[validate(required, min_length = 5, max_length = 1000)]
     message: String,
 }

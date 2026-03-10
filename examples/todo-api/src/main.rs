@@ -27,7 +27,7 @@ pub struct Todo {
 
 #[derive(Deserialize, modo::Sanitize, modo::Validate)]
 struct CreateTodo {
-    #[clean(trim, strip_html)]
+    #[clean(trim, strip_html_tags)]
     #[validate(required(message = "title is required"), min_length = 5(message = "title must be at least 5 characters"), max_length = 500(message = "title must be at most 500 characters"))]
     title: String,
 }
