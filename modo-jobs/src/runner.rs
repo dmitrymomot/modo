@@ -345,7 +345,12 @@ async fn execute_job(
                 attempt = job.attempts, max_attempts = job.max_attempts,
                 "Job timed out"
             );
-            handle_failure(db, &job, Some(&format!("Job timed out after {timeout_secs}s"))).await;
+            handle_failure(
+                db,
+                &job,
+                Some(&format!("Job timed out after {timeout_secs}s")),
+            )
+            .await;
         }
     }
 }
