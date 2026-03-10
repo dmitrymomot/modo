@@ -549,4 +549,29 @@ mod tests {
     fn format_codegen_non_aligned() {
         assert_eq!(format_size_for_codegen(1025), "1025B");
     }
+
+    #[test]
+    fn parse_size_negative() {
+        assert!(parse_size_str("-5mb").is_err());
+    }
+
+    #[test]
+    fn parse_size_fractional() {
+        assert!(parse_size_str("1.5mb").is_err());
+    }
+
+    #[test]
+    fn parse_size_space_between_number_and_unit() {
+        assert_eq!(parse_size_str("5 mb").unwrap(), 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_empty_string() {
+        assert!(parse_size_str("").is_err());
+    }
+
+    #[test]
+    fn format_codegen_zero() {
+        assert_eq!(format_size_for_codegen(0), "0B");
+    }
 }
