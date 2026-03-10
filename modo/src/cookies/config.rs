@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SameSite {
     Strict,
@@ -62,7 +62,7 @@ impl CookieOptions {
             domain: config.domain.clone(),
             secure: config.secure,
             http_only: config.http_only,
-            same_site: config.same_site.clone(),
+            same_site: config.same_site,
             max_age: config.max_age,
         }
     }

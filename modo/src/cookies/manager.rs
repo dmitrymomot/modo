@@ -205,7 +205,7 @@ pub fn build_cookie<'a>(name: &str, value: &str, opts: &CookieOptions) -> Cookie
     cookie.set_http_only(opts.http_only);
     cookie.set_secure(opts.secure);
 
-    cookie.set_same_site(cookie::SameSite::from(opts.same_site.clone()));
+    cookie.set_same_site(cookie::SameSite::from(opts.same_site));
 
     if let Some(domain) = &opts.domain {
         cookie.set_domain(domain.clone());

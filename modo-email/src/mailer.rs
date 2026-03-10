@@ -38,8 +38,8 @@ impl Mailer {
         let template = self.templates.get(&email.template, locale)?;
 
         // Substitute variables in subject and body.
-        let subject = vars::substitute(&template.subject, &email.context)?;
-        let body = vars::substitute(&template.body, &email.context)?;
+        let subject = vars::substitute(&template.subject, &email.context);
+        let body = vars::substitute(&template.body, &email.context);
 
         // Validate brand_color as a CSS hex color; fall back to default if invalid.
         let button_color = email
