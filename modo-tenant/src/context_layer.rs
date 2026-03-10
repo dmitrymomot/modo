@@ -86,14 +86,13 @@ where
             let (mut parts, body) = request.into_parts();
 
             // Resolve tenant (cached or fresh)
-            let tenant =
-                match crate::extractor::resolve_and_cache(&mut parts, &tenant_svc).await {
-                    Ok(t) => t,
-                    Err(e) => {
-                        tracing::warn!("TenantContextLayer: tenant resolution failed: {e}");
-                        None
-                    }
-                };
+            let tenant = match crate::extractor::resolve_and_cache(&mut parts, &tenant_svc).await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!("TenantContextLayer: tenant resolution failed: {e}");
+                    None
+                }
+            };
 
             // Inject tenant into template context
             if let Some(ref t) = tenant

@@ -165,19 +165,12 @@ where
 
             match action {
                 SessionAction::Set(token) => {
-                    let opts = CookieOptions::from_config(store.cookie_config())
-                        .max_age(ttl_secs);
-                    append_cookie_header(
-                        &mut response,
-                        cookie_name,
-                        &token.as_hex(),
-                        &opts,
-                    );
+                    let opts = CookieOptions::from_config(store.cookie_config()).max_age(ttl_secs);
+                    append_cookie_header(&mut response, cookie_name, &token.as_hex(), &opts);
                 }
                 SessionAction::Remove => {
                     // Max-Age=0 instructs the browser to delete the cookie
-                    let opts =
-                        CookieOptions::from_config(store.cookie_config()).max_age(0);
+                    let opts = CookieOptions::from_config(store.cookie_config()).max_age(0);
                     append_cookie_header(&mut response, cookie_name, "", &opts);
                 }
                 SessionAction::None => {
@@ -189,8 +182,8 @@ where
                                 "Failed to touch session: {e}"
                             );
                         } else if let Some(ref token) = session_token {
-                            let opts = CookieOptions::from_config(store.cookie_config())
-                                .max_age(ttl_secs);
+                            let opts =
+                                CookieOptions::from_config(store.cookie_config()).max_age(ttl_secs);
                             append_cookie_header(
                                 &mut response,
                                 cookie_name,
@@ -203,8 +196,7 @@ where
                     // Remove stale cookie (session not found, but cookie existed)
                     if had_cookie && current_session.is_none() && !read_failed {
                         // Max-Age=0 instructs the browser to delete the cookie
-                        let opts =
-                            CookieOptions::from_config(store.cookie_config()).max_age(0);
+                        let opts = CookieOptions::from_config(store.cookie_config()).max_age(0);
                         append_cookie_header(&mut response, cookie_name, "", &opts);
                     }
                 }
@@ -264,7 +256,10 @@ fn append_cookie_header<B>(
             response.headers_mut().append(http::header::SET_COOKIE, val);
         }
         Err(e) => {
-            tracing::warn!(cookie_name = name, "Failed to serialize session cookie: {e}");
+            tracing::warn!(
+                cookie_name = name,
+                "Failed to serialize session cookie: {e}"
+            );
         }
     }
 }

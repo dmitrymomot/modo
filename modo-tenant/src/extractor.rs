@@ -38,9 +38,7 @@ where
 
     if let Some(t) = tenant {
         let arc = Arc::new(t);
-        parts
-            .extensions
-            .insert(ResolvedTenant(Arc::clone(&arc)));
+        parts.extensions.insert(ResolvedTenant(Arc::clone(&arc)));
         return Ok(Some(arc));
     }
 
@@ -331,10 +329,7 @@ mod tests {
     async fn optional_tenant_returns_500_on_resolver_error() {
         let state = app_state_with_error_resolver();
         let app = Router::new()
-            .route(
-                "/",
-                get(|_t: OptionalTenant<TestTenant>| async { "ok" }),
-            )
+            .route("/", get(|_t: OptionalTenant<TestTenant>| async { "ok" }))
             .with_state(state);
 
         let resp = app
@@ -374,10 +369,7 @@ mod tests {
     async fn optional_tenant_returns_500_when_service_not_registered() {
         let state = app_state_empty();
         let app = Router::new()
-            .route(
-                "/",
-                get(|_t: OptionalTenant<TestTenant>| async { "ok" }),
-            )
+            .route("/", get(|_t: OptionalTenant<TestTenant>| async { "ok" }))
             .with_state(state);
 
         let resp = app
