@@ -43,8 +43,9 @@ ulid = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Templates (optional)
-modo-templates = { path = "../modo-templates", optional = true }
-modo-templates-macros = { path = "../modo-templates-macros", optional = true }
+minijinja = { version = "2", features = ["loader"], optional = true }
+futures-util = { version = "0.3", optional = true }
+http = { version = "1", optional = true }
 
 # CSRF (optional)
 modo-csrf = { path = "../modo-csrf", optional = true }
@@ -55,7 +56,7 @@ mime_guess = { version = "2", optional = true }
 
 [features]
 default = []
-templates = ["dep:modo-templates", "dep:modo-templates-macros"]
+templates = ["dep:minijinja", "dep:futures-util", "dep:http"]
 csrf = ["dep:modo-csrf"]
 static-fs = ["tower-http/fs"]
 static-embed = ["dep:rust-embed", "dep:mime_guess", "modo-macros/static-embed"]
@@ -63,3 +64,7 @@ static-embed = ["dep:rust-embed", "dep:mime_guess", "modo-macros/static-embed"]
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 reqwest = { version = "0.12", features = ["json"] }
+tower = { version = "0.5", features = ["util"] }
+http = "1"
+minijinja = "2"
+serde = { version = "1", features = ["derive"] }

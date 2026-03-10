@@ -405,12 +405,12 @@ impl AppBuilder {
 
         // --- Template render layer (innermost — closest to handler) ---
         #[cfg(feature = "templates")]
-        let template_engine: Option<std::sync::Arc<modo_templates::TemplateEngine>> =
-            state.services.get::<modo_templates::TemplateEngine>();
+        let template_engine: Option<std::sync::Arc<crate::templates::TemplateEngine>> =
+            state.services.get::<crate::templates::TemplateEngine>();
 
         #[cfg(feature = "templates")]
         if let Some(ref engine) = template_engine {
-            router = router.layer(modo_templates::RenderLayer::new(engine.clone()));
+            router = router.layer(crate::templates::RenderLayer::new(engine.clone()));
         }
 
         // --- User global layers (innermost of framework layers) ---
@@ -434,7 +434,7 @@ impl AppBuilder {
                         if let Some(rid_str) = rid_str
                             && let Some(ctx) = parts
                                 .extensions
-                                .get_mut::<modo_templates::TemplateContext>()
+                                .get_mut::<crate::templates::TemplateContext>()
                         {
                             ctx.insert("request_id", rid_str);
                         }
@@ -442,7 +442,7 @@ impl AppBuilder {
                         next.run(request).await
                     },
                 ));
-            router = router.layer(modo_templates::ContextLayer::new());
+            router = router.layer(crate::templates::ContextLayer::new());
         }
 
         // --- Rate limiter (global) ---

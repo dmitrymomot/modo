@@ -1,4 +1,4 @@
-use modo_templates::{TemplateConfig, engine};
+use modo::templates::{TemplateConfig, engine};
 
 #[modo::view("pages/home.html", htmx = "partials/clock.html")]
 struct HomePage {

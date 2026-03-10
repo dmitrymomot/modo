@@ -7,6 +7,7 @@ mod middleware;
 mod module;
 mod sanitize;
 mod validate;
+mod view;
 
 /// Attribute macro for declaring HTTP handlers with auto-registration.
 #[proc_macro_attribute]
@@ -52,6 +53,14 @@ pub fn derive_sanitize(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Validate, attributes(validate))]
 pub fn derive_validate(input: TokenStream) -> TokenStream {
     validate::expand(input.into())
+        .unwrap_or_else(|e| e.to_compile_error())
+        .into()
+}
+
+/// Marks a struct as a view with an associated template.
+#[proc_macro_attribute]
+pub fn view(attr: TokenStream, item: TokenStream) -> TokenStream {
+    view::expand(attr.into(), item.into())
         .unwrap_or_else(|e| e.to_compile_error())
         .into()
 }

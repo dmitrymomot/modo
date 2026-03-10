@@ -1,6 +1,6 @@
 pub use modo_macros::{Sanitize, Validate, error_handler, handler, main, module};
 #[cfg(feature = "templates")]
-pub use modo_templates_macros::view;
+pub use modo_macros::view;
 
 pub mod app;
 pub mod config;
@@ -16,6 +16,8 @@ pub mod sanitize;
 pub mod shutdown;
 #[cfg(any(feature = "static-fs", feature = "static-embed"))]
 pub(crate) mod static_files;
+#[cfg(feature = "templates")]
+pub mod templates;
 pub mod validate;
 
 pub use config::{HttpConfig, RateLimitConfig, SecurityHeadersConfig, TrailingSlash};
@@ -30,10 +32,8 @@ pub use axum;
 pub use axum_extra;
 pub use chrono;
 pub use inventory;
-#[cfg(feature = "csrf")]
-pub use modo_csrf;
 #[cfg(feature = "templates")]
-pub use modo_templates;
+pub use minijinja;
 #[cfg(feature = "static-embed")]
 pub use rust_embed;
 pub use serde;
