@@ -6,8 +6,6 @@ pub enum TemplateError {
     NotFound { name: String },
     /// MiniJinja render error.
     Render { source: minijinja::Error },
-    /// Engine not registered as a service.
-    EngineNotRegistered,
 }
 
 impl fmt::Display for TemplateError {
@@ -15,7 +13,6 @@ impl fmt::Display for TemplateError {
         match self {
             Self::NotFound { name } => write!(f, "template not found: {name}"),
             Self::Render { source } => write!(f, "template render error: {source}"),
-            Self::EngineNotRegistered => write!(f, "TemplateEngine not registered as a service"),
         }
     }
 }
@@ -24,7 +21,7 @@ impl std::error::Error for TemplateError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Render { source } => Some(source),
-            _ => None,
+            Self::NotFound { .. } => None,
         }
     }
 }
