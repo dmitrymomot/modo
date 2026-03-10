@@ -5,6 +5,8 @@ pub use modo_macros::view;
 pub mod app;
 pub mod config;
 pub mod cors;
+#[cfg(feature = "csrf")]
+pub mod csrf;
 pub mod error;
 pub mod extractors;
 pub mod health;

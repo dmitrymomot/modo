@@ -48,7 +48,11 @@ futures-util = { version = "0.3", optional = true }
 http = { version = "1", optional = true }
 
 # CSRF (optional)
-modo-csrf = { path = "../modo-csrf", optional = true }
+rand = { version = "0.9", optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+subtle = { version = "2", optional = true }
+form_urlencoded = { version = "1", optional = true }
 
 # Static files (optional)
 rust-embed = { version = "8", features = ["axum"], optional = true }
@@ -57,7 +61,7 @@ mime_guess = { version = "2", optional = true }
 [features]
 default = []
 templates = ["dep:minijinja", "dep:futures-util", "dep:http"]
-csrf = ["dep:modo-csrf"]
+csrf = ["dep:rand", "dep:hmac", "dep:sha2", "dep:subtle", "dep:form_urlencoded", "dep:http"]
 static-fs = ["tower-http/fs"]
 static-embed = ["dep:rust-embed", "dep:mime_guess", "modo-macros/static-embed"]
 

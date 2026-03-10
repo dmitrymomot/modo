@@ -1,19 +1,11 @@
-use crate::config::CsrfConfig;
-use crate::token;
+use super::config::CsrfConfig;
+use super::token;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{Method, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use http::header;
-
-/// Trait for extracting CSRF config and secret from application state.
-///
-/// Implement this for your app state type to use `csrf_protection` middleware.
-pub trait CsrfState {
-    fn csrf_config(&self) -> CsrfConfig;
-    fn csrf_secret(&self) -> &[u8];
-}
 
 /// CSRF token inserted into request extensions by the middleware.
 ///
@@ -28,16 +20,17 @@ pub struct CsrfToken(pub String);
 ///
 /// For mutating methods (POST, PUT, PATCH, DELETE): validates that the token
 /// submitted via header or form field matches the cookie token.
-pub async fn csrf_protection<S>(
-    State(state): State<S>,
+pub async fn csrf_protection(
+    State(state): State<crate::app::AppState>,
     request: Request<Body>,
     next: Next,
-) -> Response
-where
-    S: CsrfState + Clone + Send + Sync + 'static,
-{
-    let config = state.csrf_config();
-    let key = state.csrf_secret();
+) -> Response {
+    let config = state
+        .services
+        .get::<CsrfConfig>()
+        .map(|c| (*c).clone())
+        .unwrap_or_default();
+    let key = state.server_config.secret_key.as_bytes();
     let method = request.method().clone();
 
     if is_safe_method(&method) {
@@ -78,7 +71,7 @@ async fn handle_safe_request(
     #[cfg(feature = "templates")]
     if let Some(ctx) = parts
         .extensions
-        .get_mut::<modo_templates::TemplateContext>()
+        .get_mut::<crate::templates::TemplateContext>()
     {
         ctx.insert("csrf_token", raw_token.clone());
         ctx.insert("csrf_field_name", config.field_name.clone());
@@ -162,7 +155,7 @@ async fn handle_mutating_request(
     #[cfg(feature = "templates")]
     if let Some(ctx) = parts
         .extensions
-        .get_mut::<modo_templates::TemplateContext>()
+        .get_mut::<crate::templates::TemplateContext>()
     {
         ctx.insert("csrf_token", cookie_token.clone());
         ctx.insert("csrf_field_name", config.field_name.clone());
@@ -238,34 +231,30 @@ fn build_set_cookie(name: &str, value: &str, max_age: u64, secure: bool) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::{AppState, ServiceRegistry};
+    use crate::config::ServerConfig;
     use axum::Router;
     use axum::routing::{get, post};
+    use axum_extra::extract::cookie::Key;
     use http::Request;
     use tower::ServiceExt;
 
-    #[derive(Clone)]
-    struct TestState {
-        config: CsrfConfig,
-        secret: Vec<u8>,
-    }
+    fn test_state() -> AppState {
+        let services = ServiceRegistry::new().with(CsrfConfig::default());
 
-    impl CsrfState for TestState {
-        fn csrf_config(&self) -> CsrfConfig {
-            self.config.clone()
-        }
-        fn csrf_secret(&self) -> &[u8] {
-            &self.secret
-        }
-    }
+        let server_config = ServerConfig {
+            secret_key: "test-secret-key-for-csrf".to_string(),
+            ..Default::default()
+        };
 
-    fn test_state() -> TestState {
-        TestState {
-            config: CsrfConfig::default(),
-            secret: b"test-secret-key-for-csrf".to_vec(),
+        AppState {
+            services,
+            server_config,
+            cookie_key: Key::generate(),
         }
     }
 
-    fn test_app(state: TestState) -> Router {
+    fn test_app(state: AppState) -> Router {
         Router::new()
             .route(
                 "/form",
@@ -277,7 +266,7 @@ mod tests {
             )
             .layer(axum::middleware::from_fn_with_state(
                 state.clone(),
-                csrf_protection::<TestState>,
+                csrf_protection,
             ))
             .with_state(state)
     }
@@ -308,8 +297,14 @@ mod tests {
     #[tokio::test]
     async fn get_with_valid_cookie_does_not_set_new_cookie() {
         let state = test_state();
-        let raw_token = token::generate(state.config.token_length);
-        let signed = token::sign(&raw_token, &state.secret);
+        let config = state
+            .services
+            .get::<CsrfConfig>()
+            .map(|c| (*c).clone())
+            .unwrap_or_default();
+        let key = state.server_config.secret_key.as_bytes();
+        let raw_token = token::generate(config.token_length);
+        let signed = token::sign(&raw_token, key);
 
         let app = test_app(state);
         let request = Request::builder()
@@ -326,8 +321,9 @@ mod tests {
     #[tokio::test]
     async fn post_with_valid_cookie_and_matching_header_succeeds() {
         let state = test_state();
-        let raw_token = token::generate(state.config.token_length);
-        let signed = token::sign(&raw_token, &state.secret);
+        let key = state.server_config.secret_key.as_bytes();
+        let raw_token = token::generate(32);
+        let signed = token::sign(&raw_token, key);
 
         let app = test_app(state);
         let request = Request::builder()
@@ -345,8 +341,9 @@ mod tests {
     #[tokio::test]
     async fn post_with_valid_cookie_and_matching_form_field_succeeds() {
         let state = test_state();
-        let raw_token = token::generate(state.config.token_length);
-        let signed = token::sign(&raw_token, &state.secret);
+        let key = state.server_config.secret_key.as_bytes();
+        let raw_token = token::generate(32);
+        let signed = token::sign(&raw_token, key);
         let form_body = format!("name=test&_csrf_token={raw_token}");
 
         let app = test_app(state);
@@ -365,11 +362,12 @@ mod tests {
     #[tokio::test]
     async fn post_with_wrong_token_returns_403() {
         let state = test_state();
-        let raw_token = token::generate(state.config.token_length);
-        let signed = token::sign(&raw_token, &state.secret);
+        let key = state.server_config.secret_key.as_bytes();
+        let raw_token = token::generate(32);
+        let signed = token::sign(&raw_token, key);
 
-        let app = test_app(state.clone());
-        let wrong_token = token::generate(state.config.token_length);
+        let app = test_app(state);
+        let wrong_token = token::generate(32);
         let request = Request::builder()
             .method(Method::POST)
             .uri("/submit")
@@ -399,8 +397,9 @@ mod tests {
     #[tokio::test]
     async fn post_with_tampered_cookie_hmac_returns_403() {
         let state = test_state();
-        let raw_token = token::generate(state.config.token_length);
-        let mut signed = token::sign(&raw_token, &state.secret);
+        let key = state.server_config.secret_key.as_bytes();
+        let raw_token = token::generate(32);
+        let mut signed = token::sign(&raw_token, key);
         // Tamper the last char
         let last = signed.pop().unwrap();
         signed.push(if last == 'a' { 'b' } else { 'a' });
@@ -421,8 +420,9 @@ mod tests {
     #[tokio::test]
     async fn post_with_no_submitted_token_returns_403() {
         let state = test_state();
-        let raw_token = token::generate(state.config.token_length);
-        let signed = token::sign(&raw_token, &state.secret);
+        let key = state.server_config.secret_key.as_bytes();
+        let raw_token = token::generate(32);
+        let signed = token::sign(&raw_token, key);
 
         let app = test_app(state);
         let request = Request::builder()
