@@ -169,8 +169,7 @@ where
 
             // Set cookie if query param resolved the language (and no cookie was present)
             if should_set_cookie {
-                let opts = CookieOptions::from_config(&cookie_config)
-                    .max_age(31_536_000); // 1 year
+                let opts = CookieOptions::from_config(&cookie_config).max_age(31_536_000); // 1 year
                 let cookie = build_cookie(&config.cookie_name, &resolved, &opts);
                 if let Ok(val) = cookie.to_string().parse() {
                     response.headers_mut().append(http::header::SET_COOKIE, val);
