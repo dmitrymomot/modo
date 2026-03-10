@@ -64,9 +64,7 @@ pub fn register_template_functions(env: &mut Environment<'static>, store: Arc<Tr
             };
 
             match result {
-                Some(template_str) => {
-                    Ok(super::interpolate(&template_str, &vars))
-                }
+                Some(template_str) => Ok(super::interpolate(&template_str, &vars)),
                 None => {
                     // Return the key itself as fallback (common i18n convention)
                     Ok(key)
