@@ -218,4 +218,44 @@ mod tests {
         let f = UploadedFile::__test_new("f", "img.png", "image/png", &[0u8; 5]);
         f.validate().max_size(10).accept("image/*").check().unwrap();
     }
+
+    #[test]
+    fn mime_semicolon_no_params() {
+        assert!(mime_matches("image/png;", "image/png"));
+    }
+
+    #[test]
+    fn mime_case_sensitive() {
+        assert!(!mime_matches("Image/PNG", "image/png"));
+    }
+
+    #[test]
+    fn mime_wildcard_invalid_form() {
+        assert!(!mime_matches("image/png", "*/image"));
+    }
+
+    #[test]
+    fn mime_leading_trailing_whitespace() {
+        assert!(mime_matches(" image/png ", "image/png"));
+    }
+
+    #[test]
+    fn mime_wildcard_partial_type_rejected() {
+        assert!(!mime_matches("imageX/png", "image/*"));
+    }
+
+    #[test]
+    fn format_size_zero() {
+        assert_eq!(format_size(0), "0B");
+    }
+
+    #[test]
+    fn format_size_boundary_1023() {
+        assert_eq!(format_size(1023), "1023B");
+    }
+
+    #[test]
+    fn format_size_boundary_below_mb() {
+        assert_eq!(format_size(1024 * 1024 - 1), "1048575B");
+    }
 }

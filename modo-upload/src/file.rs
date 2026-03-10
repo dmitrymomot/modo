@@ -150,4 +150,55 @@ mod tests {
     fn extension_none() {
         assert_eq!(file_with_name("noext").extension(), None);
     }
+
+    #[test]
+    fn extension_trailing_dot() {
+        assert_eq!(file_with_name("file.").extension(), Some("".into()));
+    }
+
+    #[test]
+    fn extension_empty_filename() {
+        assert_eq!(file_with_name("").extension(), None);
+    }
+
+    #[test]
+    fn extension_only_dots() {
+        assert_eq!(file_with_name("....").extension(), Some("".into()));
+    }
+
+    #[test]
+    fn extension_single_dot() {
+        assert_eq!(file_with_name(".").extension(), Some("".into()));
+    }
+
+    #[test]
+    fn extension_unicode_filename() {
+        assert_eq!(file_with_name("café.txt").extension(), Some("txt".into()));
+    }
+
+    #[test]
+    fn extension_space_in_name() {
+        assert_eq!(
+            file_with_name("my file.tar.gz").extension(),
+            Some("gz".into())
+        );
+    }
+
+    #[test]
+    fn accessors_nonempty_file() {
+        let f = UploadedFile::__test_new("field", "photo.jpg", "image/jpeg", b"imgdata");
+        assert_eq!(f.name(), "field");
+        assert_eq!(f.file_name(), "photo.jpg");
+        assert_eq!(f.content_type(), "image/jpeg");
+        assert_eq!(f.data().as_ref(), b"imgdata");
+        assert_eq!(f.size(), 7);
+        assert!(!f.is_empty());
+    }
+
+    #[test]
+    fn accessors_empty_file() {
+        let f = UploadedFile::__test_new("field", "empty.bin", "application/octet-stream", b"");
+        assert_eq!(f.size(), 0);
+        assert!(f.is_empty());
+    }
 }
