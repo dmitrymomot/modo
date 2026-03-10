@@ -358,7 +358,10 @@ impl AppBuilder {
                 router = router.nest(module_reg.prefix, sub_router);
                 info!("Registered module: {} at {}", mod_name, module_reg.prefix);
             } else {
-                // Module routes without a ModuleRegistration — nest at root
+                warn!(
+                    "Routes reference module '{}' but no #[module] registration found — mounting at root",
+                    mod_name
+                );
                 router = router.merge(sub_router);
             }
         }
@@ -366,10 +369,9 @@ impl AppBuilder {
         // Mount static file service (before fallback so it takes precedence)
         #[cfg(any(feature = "static-fs", feature = "static-embed"))]
         if let Some(ref static_config) = server_config.static_files {
-            assert!(
-                static_config.prefix.starts_with('/'),
-                "static files prefix must start with '/'"
-            );
+            if !static_config.prefix.starts_with('/') {
+                return Err("static files prefix must start with '/'".into());
+            }
 
             let mut static_svc = None;
 
