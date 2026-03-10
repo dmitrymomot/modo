@@ -9,6 +9,7 @@ use axum::response::Response;
 use std::net::{IpAddr, SocketAddr};
 
 /// Pre-parsed trusted proxy CIDR ranges, registered as a service at startup.
+#[derive(Debug)]
 pub(crate) struct TrustedProxies(pub Vec<CidrRange>);
 
 /// The resolved client IP address, inserted into request extensions.
@@ -111,7 +112,7 @@ pub(crate) fn parse_trusted_proxies(proxies: &[String]) -> Vec<CidrRange> {
 // CIDR matching
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct CidrRange {
     network: IpAddr,
     prefix_len: u8,
