@@ -73,6 +73,8 @@ type ShutdownHook = Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>>
 #[cfg(feature = "static-embed")]
 type EmbedBuilderFn =
     Box<dyn FnOnce(&crate::static_files::StaticConfig) -> axum::Router<()> + Send>;
+#[cfg(feature = "templates")]
+type TemplatesCallback = Box<dyn FnOnce(&mut crate::templates::TemplateEngine) + Send>;
 
 pub struct AppBuilder {
     app_config: Option<crate::config::AppConfig>,
@@ -92,8 +94,7 @@ pub struct AppBuilder {
     #[cfg(feature = "static-embed")]
     embed_builder: Option<EmbedBuilderFn>,
     #[cfg(feature = "templates")]
-    #[allow(clippy::type_complexity)]
-    templates_callback: Option<Box<dyn FnOnce(&mut crate::templates::TemplateEngine) + Send>>,
+    templates_callback: Option<TemplatesCallback>,
 }
 
 impl AppBuilder {
