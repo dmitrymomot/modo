@@ -124,7 +124,7 @@ impl AppBuilder {
         self
     }
 
-    /// Deprecated: use `config()` with `AppConfig` instead.
+    #[deprecated(note = "use `config()` with `AppConfig` instead")]
     pub fn server_config(mut self, config: ServerConfig) -> Self {
         let mut app_config = self.app_config.take().unwrap_or_default();
         app_config.server = config;
@@ -310,7 +310,7 @@ impl AppBuilder {
             Key::derive_from(server_config.secret_key.as_bytes())
         };
 
-        // --- Auto-wire CookieConfig ---
+        // --- Auto-wire CookieConfig (always registered; cookies is a core feature, not feature-gated) ---
         self.services.insert(
             TypeId::of::<crate::cookies::CookieConfig>(),
             Arc::new(app_config.cookies.clone()),

@@ -16,6 +16,7 @@ fn test_app_builder_creates() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_app_builder_with_server_config() {
     let config = ServerConfig {
         port: 8080,
