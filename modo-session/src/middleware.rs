@@ -209,6 +209,24 @@ where
     }
 }
 
+/// Extract the current user ID from request extensions without going through
+/// the full `SessionManager` extractor. Useful for middleware/layers.
+///
+/// Uses `try_lock()` to avoid deadlocks when `SessionManager::set()` or
+/// `remove_key()` hold the mutex across `.await`. Returns `None` if no session
+/// exists or the lock is contended (logged at trace level).
+pub fn user_id_from_extensions(extensions: &http::Extensions) -> Option<String> {
+    extensions
+        .get::<Arc<SessionManagerState>>()
+        .and_then(|state| match state.current_session.try_lock() {
+            Ok(guard) => guard.as_ref().map(|s| s.user_id.clone()),
+            Err(_) => {
+                tracing::trace!("user_id_from_extensions: session lock contended, returning None");
+                None
+            }
+        })
+}
+
 // --- Cookie helpers ---
 
 fn read_session_cookie(headers: &http::HeaderMap, cookie_name: &str) -> Option<SessionToken> {

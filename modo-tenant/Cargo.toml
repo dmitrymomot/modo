@@ -1,19 +1,18 @@
 [package]
-name = "modo-auth"
+name = "modo-tenant"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
 
 [dependencies]
+http = "1"
 modo = { path = "../modo" }
-modo-session = { path = "../modo-session" }
 modo-templates = { path = "../modo-templates", optional = true }
-argon2 = "0.5"
-futures-util = "0.3"
-minijinja = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 tower = { version = "0.5", features = ["util"] }
-tokio = { version = "1", features = ["rt"] }
+tracing = "0.1"
+futures-util = "0.3"
+minijinja = { version = "2", optional = true }
 
 [features]
 default = []
@@ -21,9 +20,8 @@ templates = ["dep:modo-templates", "dep:minijinja"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
-serde_yaml_ng = "0.10"
-modo-db = { path = "../modo-db" }
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie-signed"] }
 tower = { version = "0.5", features = ["util"] }
 http = "1"
+serde_json = "1"

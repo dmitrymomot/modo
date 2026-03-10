@@ -27,6 +27,7 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - `modo-templates/` — MiniJinja template engine (views, render layer, context injection)
 - `modo-templates-macros/` — `#[view("path", htmx = "path")]` proc macro
 - `modo-csrf/` — CSRF protection (double-submit cookie, HMAC-signed tokens)
+- `modo-tenant/` — multi-tenancy (tenant resolution, extractors, template context)
 
 ## Commands
 
@@ -69,6 +70,11 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Jobs: `#[modo_jobs::job(queue = "...", priority = N, max_attempts = N, timeout = "5m")]`
 - Cron jobs: `#[modo_jobs::job(cron = "0 0 * * * *", timeout = "5m")]` — in-memory only
 - Upload storage: `UploadConfig { backend, path, s3 }` — YAML-deserializable, `modo_upload::storage(&config)?` returns `Box<dyn FileStorage>`
+- Tenant resolution: implement `HasTenantId` + `TenantResolver` traits, wrap in `TenantResolverService::new(resolver)`, register as service
+- Tenant extractors: `Tenant<T>` (required, 404 if missing), `OptionalTenant<T>` (optional), both cache via `ResolvedTenant<T>` extension
+- Built-in resolvers: `SubdomainResolver`, `HeaderResolver`, `PathPrefixResolver` — all take a lookup closure
+- Template context layer: `TenantContextLayer<T>` — auto-injects `tenant` into `TemplateContext` (feature = "templates")
+- User context layer: `modo_auth::context_layer::UserContextLayer<U>` — auto-injects `user` into `TemplateContext` (feature = "templates")
 
 ## Gotchas
 
@@ -83,3 +89,5 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Use official documentation only when researching dependencies
 - Session IDs: ULID (no UUID anywhere)
 - Testing Tower middleware: use `Router::new().route(...).layer(mw).oneshot(request)` pattern — no AppState needed, handler reads `Extension<T>` from extensions
+- Type-erased services: use object-safe bridge trait (`XxxDyn`) + `Arc<dyn XxxDyn<T>>` wrapper — see `TenantResolverService` pattern
+- Session user ID access: use `modo_session::user_id_from_extensions(&parts.extensions)` — returns `Option<String>`
