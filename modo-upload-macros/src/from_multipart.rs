@@ -261,20 +261,25 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
         .map(|f| {
             let var = quote::format_ident!("__{}", f.field_name);
             let name = &f.multipart_name;
+            // For file fields: use per-field max_size if set, otherwise fall back to __max_file_size
+            let file_size_limit = match f.upload_attrs.max_size {
+                Some(max_bytes) => quote! { Some(#max_bytes) },
+                None => quote! { __max_file_size },
+            };
             match &f.kind {
                 FieldKind::UploadedFile | FieldKind::OptionUploadedFile => quote! {
                     Some(#name) => {
-                        #var = Some(modo_upload::UploadedFile::from_field(__field).await?);
+                        #var = Some(modo_upload::UploadedFile::from_field(__field, #file_size_limit).await?);
                     }
                 },
                 FieldKind::VecUploadedFile => quote! {
                     Some(#name) => {
-                        #var.push(modo_upload::UploadedFile::from_field(__field).await?);
+                        #var.push(modo_upload::UploadedFile::from_field(__field, #file_size_limit).await?);
                     }
                 },
                 FieldKind::UploadStream => quote! {
                     Some(#name) => {
-                        #var = Some(modo_upload::UploadStream::from_field(__field).await?);
+                        #var = Some(modo_upload::UploadStream::from_field(__field, #file_size_limit).await?);
                     }
                 },
                 FieldKind::String | FieldKind::OptionString | FieldKind::FromStr => quote! {
@@ -433,6 +438,7 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
         impl #impl_generics modo_upload::FromMultipart for #struct_name #ty_generics #where_clause {
             async fn from_multipart(
                 multipart: &mut modo_upload::__internal::axum::extract::Multipart,
+                __max_file_size: Option<usize>,
             ) -> Result<Self, modo::Error> {
                 #(#var_decls)*
 
@@ -464,5 +470,84 @@ fn format_size_for_codegen(bytes: usize) -> String {
         format!("{}KB", bytes / 1024)
     } else {
         format!("{bytes}B")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- parse_size_str --
+
+    #[test]
+    fn parse_size_bytes() {
+        assert_eq!(parse_size_str("100b").unwrap(), 100);
+    }
+
+    #[test]
+    fn parse_size_kilobytes() {
+        assert_eq!(parse_size_str("5kb").unwrap(), 5 * 1024);
+    }
+
+    #[test]
+    fn parse_size_megabytes() {
+        assert_eq!(parse_size_str("10mb").unwrap(), 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_gigabytes() {
+        assert_eq!(parse_size_str("2gb").unwrap(), 2 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_case_insensitive() {
+        assert_eq!(parse_size_str("5MB").unwrap(), 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_whitespace() {
+        assert_eq!(parse_size_str("  10mb  ").unwrap(), 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parse_size_plain_number() {
+        assert_eq!(parse_size_str("1024").unwrap(), 1024);
+    }
+
+    #[test]
+    fn parse_size_invalid() {
+        assert!(parse_size_str("abcmb").is_err());
+    }
+
+    #[test]
+    fn parse_size_zero() {
+        assert_eq!(parse_size_str("0mb").unwrap(), 0);
+    }
+
+    // -- format_size_for_codegen --
+
+    #[test]
+    fn format_codegen_bytes() {
+        assert_eq!(format_size_for_codegen(500), "500B");
+    }
+
+    #[test]
+    fn format_codegen_kilobytes() {
+        assert_eq!(format_size_for_codegen(1024), "1KB");
+    }
+
+    #[test]
+    fn format_codegen_megabytes() {
+        assert_eq!(format_size_for_codegen(5 * 1024 * 1024), "5MB");
+    }
+
+    #[test]
+    fn format_codegen_gigabytes() {
+        assert_eq!(format_size_for_codegen(2 * 1024 * 1024 * 1024), "2GB");
+    }
+
+    #[test]
+    fn format_codegen_non_aligned() {
+        assert_eq!(format_size_for_codegen(1025), "1025B");
     }
 }

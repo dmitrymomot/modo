@@ -149,4 +149,66 @@ mod tests {
         assert_eq!(format_size(5 * 1024 * 1024), "5MB");
         assert_eq!(format_size(2 * 1024 * 1024 * 1024), "2GB");
     }
+
+    // -- UploadValidator --
+
+    #[test]
+    fn validator_max_size_pass() {
+        let f = UploadedFile::__test_new("f", "a.bin", "application/octet-stream", &[0u8; 5]);
+        f.validate().max_size(10).check().unwrap();
+    }
+
+    #[test]
+    fn validator_max_size_fail() {
+        let f = UploadedFile::__test_new("f", "a.bin", "application/octet-stream", &[0u8; 20]);
+        assert!(f.validate().max_size(10).check().is_err());
+    }
+
+    #[test]
+    fn validator_max_size_exact_boundary() {
+        let f = UploadedFile::__test_new("f", "a.bin", "application/octet-stream", &[0u8; 10]);
+        // size == max should pass (not >)
+        f.validate().max_size(10).check().unwrap();
+    }
+
+    #[test]
+    fn validator_accept_pass() {
+        let f = UploadedFile::__test_new("f", "img.png", "image/png", b"img");
+        f.validate().accept("image/*").check().unwrap();
+    }
+
+    #[test]
+    fn validator_accept_fail() {
+        let f = UploadedFile::__test_new("f", "doc.txt", "text/plain", b"text");
+        assert!(f.validate().accept("image/*").check().is_err());
+    }
+
+    #[test]
+    fn validator_chain_both_fail() {
+        let f = UploadedFile::__test_new("f", "doc.txt", "text/plain", &[0u8; 20]);
+        let err = f
+            .validate()
+            .max_size(10)
+            .accept("image/*")
+            .check()
+            .unwrap_err();
+        // Both errors should be collected
+        let details = err.details();
+        let messages = details
+            .get("f")
+            .expect("expected details for field 'f'")
+            .as_array()
+            .expect("expected JSON array");
+        assert_eq!(
+            messages.len(),
+            2,
+            "expected 2 validation messages, got: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn validator_chain_both_pass() {
+        let f = UploadedFile::__test_new("f", "img.png", "image/png", &[0u8; 5]);
+        f.validate().max_size(10).accept("image/*").check().unwrap();
+    }
 }

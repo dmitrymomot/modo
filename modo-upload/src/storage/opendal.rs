@@ -45,12 +45,7 @@ impl FileStorage for OpendalStorage {
         let filename = generate_filename(stream.file_name());
         let path = format!("{prefix}/{filename}");
 
-        let mut data = Vec::new();
-        while let Some(chunk) = stream.chunk().await {
-            let chunk =
-                chunk.map_err(|e| modo::Error::internal(format!("Failed to read chunk: {e}")))?;
-            data.extend_from_slice(&chunk);
-        }
+        let data = stream.to_bytes();
         let size = data.len() as u64;
 
         self.operator

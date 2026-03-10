@@ -42,7 +42,16 @@ where
         let mut multipart = axum::extract::Multipart::from_request(req, state)
             .await
             .map_err(|e| HttpError::BadRequest.with_message(format!("{e}")))?;
-        let mut value = T::from_multipart(&mut multipart).await?;
+        let max_file_size = state
+            .services
+            .get::<crate::config::UploadConfig>()
+            .and_then(|config| {
+                config
+                    .max_file_size
+                    .as_ref()
+                    .and_then(|s| modo::config::parse_size(s).ok())
+            });
+        let mut value = T::from_multipart(&mut multipart, max_file_size).await?;
         modo::sanitize::auto_sanitize(&mut value);
         Ok(MultipartForm(value))
     }

@@ -19,7 +19,10 @@ pub use validate::{gb, kb, mb};
 /// Trait for parsing a struct from `multipart/form-data`.
 #[async_trait::async_trait]
 pub trait FromMultipart: Sized {
-    async fn from_multipart(multipart: &mut axum::extract::Multipart) -> Result<Self, modo::Error>;
+    async fn from_multipart(
+        multipart: &mut axum::extract::Multipart,
+        max_file_size: Option<usize>,
+    ) -> Result<Self, modo::Error>;
 }
 
 /// Internal helpers exposed for use by generated code. Not public API.
