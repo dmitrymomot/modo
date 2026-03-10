@@ -92,6 +92,7 @@ pub struct AppBuilder {
     #[cfg(feature = "static-embed")]
     embed_builder: Option<EmbedBuilderFn>,
     #[cfg(feature = "templates")]
+    #[allow(clippy::type_complexity)]
     templates_callback: Option<Box<dyn FnOnce(&mut crate::templates::TemplateEngine) + Send>>,
 }
 
@@ -337,10 +338,8 @@ impl AppBuilder {
             {
                 let i18n_store = crate::i18n::load(&app_config.i18n)?;
                 crate::i18n::register_template_functions(engine.env_mut(), i18n_store.clone());
-                self.services.insert(
-                    TypeId::of::<crate::i18n::TranslationStore>(),
-                    i18n_store,
-                );
+                self.services
+                    .insert(TypeId::of::<crate::i18n::TranslationStore>(), i18n_store);
             }
 
             // Auto-wire CSRF template functions if both features enabled
@@ -363,10 +362,8 @@ impl AppBuilder {
         #[cfg(all(feature = "i18n", not(feature = "templates")))]
         {
             let i18n_store = crate::i18n::load(&app_config.i18n)?;
-            self.services.insert(
-                TypeId::of::<crate::i18n::TranslationStore>(),
-                i18n_store,
-            );
+            self.services
+                .insert(TypeId::of::<crate::i18n::TranslationStore>(), i18n_store);
         }
 
         // --- Auto-wire CsrfConfig ---

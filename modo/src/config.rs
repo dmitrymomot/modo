@@ -225,7 +225,7 @@ impl ServerConfig {
 /// Top-level config type for `#[modo::main]`. Includes server settings
 /// and optional feature-specific sections (cookies, templates, i18n, CSRF).
 /// All feature sections use `#[serde(default)]` — absent in YAML means defaults apply.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub server: ServerConfig,
@@ -236,21 +236,6 @@ pub struct AppConfig {
     pub i18n: crate::i18n::I18nConfig,
     #[cfg(feature = "csrf")]
     pub csrf: crate::csrf::CsrfConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            cookies: crate::cookies::CookieConfig::default(),
-            #[cfg(feature = "templates")]
-            templates: crate::templates::TemplateConfig::default(),
-            #[cfg(feature = "i18n")]
-            i18n: crate::i18n::I18nConfig::default(),
-            #[cfg(feature = "csrf")]
-            csrf: crate::csrf::CsrfConfig::default(),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
