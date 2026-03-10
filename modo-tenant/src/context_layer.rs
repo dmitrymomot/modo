@@ -220,6 +220,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn injected_tenant_has_correct_fields() {
+        let svc = TenantResolverService::new(OkResolver);
+        let layer = TenantContextLayer::new(svc);
+
+        let app = modo::axum::Router::new()
+            .route(
+                "/",
+                get(|Extension(ctx): Extension<TemplateContext>| async move {
+                    let tenant = ctx.get("tenant").expect("tenant should be injected");
+                    let id = tenant.get_attr("id").expect("id attr missing");
+                    id.to_string()
+                }),
+            )
+            .layer(layer);
+
+        let mut req = Request::builder()
+            .header("host", "acme.test.com")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(TemplateContext::new());
+
+        let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = modo::axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"t-1");
+    }
+
+    #[tokio::test]
     async fn no_crash_without_template_context() {
         let svc = TenantResolverService::new(OkResolver);
         let layer = TenantContextLayer::new(svc);
