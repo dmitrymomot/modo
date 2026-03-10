@@ -79,6 +79,11 @@ impl CookieOptions {
         self
     }
 
+    pub fn same_site(mut self, same_site: SameSite) -> Self {
+        self.same_site = same_site;
+        self
+    }
+
     pub fn max_age(mut self, secs: u64) -> Self {
         self.max_age = Some(secs);
         self
