@@ -16,20 +16,21 @@
 //! ## Stream from a broadcast channel
 //!
 //! ```rust,ignore
-//! use modo::sse::{SseBroadcastManager, SseEvent, SseResponse, SseStreamExt};
+//! use modo::sse::{Sse, SseBroadcastManager, SseEvent, SseResponse, SseStreamExt};
 //!
 //! // Register a broadcast manager as a service in main()
 //! let notifications: SseBroadcastManager<UserId, Notification> =
 //!     SseBroadcastManager::new(64);
 //! app.service(notifications);
 //!
-//! // Subscribe in a handler
+//! // Subscribe in a handler — Sse extractor auto-applies keep-alive config
 //! #[modo::handler(GET, "/notifications/events")]
 //! async fn events(
+//!     sse: Sse,
 //!     auth: Auth<User>,
 //!     Service(bc): Service<SseBroadcastManager<UserId, Notification>>,
 //! ) -> SseResponse {
-//!     modo::sse::from_stream(bc.subscribe(&auth.user.id).sse_json())
+//!     sse.from_stream(bc.subscribe(&auth.user.id).sse_json())
 //! }
 //! ```
 //!
@@ -37,8 +38,8 @@
 //!
 //! ```rust,ignore
 //! #[modo::handler(GET, "/jobs/{id}/progress")]
-//! async fn progress(id: String, Service(jobs): Service<JobService>) -> SseResponse {
-//!     modo::sse::channel(|tx| async move {
+//! async fn progress(sse: Sse, id: String, Service(jobs): Service<JobService>) -> SseResponse {
+//!     sse.channel(|tx| async move {
 //!         while let Some(status) = jobs.poll_status(&id).await {
 //!             tx.send(SseEvent::new().event("progress").json(&status)?).await?;
 //!             if status.is_done() { break; }
@@ -53,6 +54,7 @@
 //! ```rust,ignore
 //! #[modo::handler(GET, "/chat/{id}/events")]
 //! async fn chat(
+//!     sse: Sse,
 //!     id: String,
 //!     view: ViewRenderer,
 //!     Service(bc): Service<SseBroadcastManager<String, ChatMessage>>,
@@ -61,7 +63,7 @@
 //!         let html = view.render_to_string(MessageView::from(&msg))?;
 //!         Ok(SseEvent::new().event("message").html(html))
 //!     });
-//!     modo::sse::from_stream(stream)
+//!     sse.from_stream(stream)
 //! }
 //! ```
 //!
@@ -71,6 +73,7 @@
 //! |------|---------|
 //! | [`SseEvent`] | Builder for a single event (data/json/html + metadata) |
 //! | [`SseResponse`] | Handler return type — wraps a stream with keep-alive |
+//! | [`Sse`] | Extractor — auto-applies [`SseConfig`] to responses |
 //! | [`SseBroadcastManager`] | Keyed broadcast channels for fan-out delivery |
 //! | [`SseStream`] | Stream of raw `T` values from a broadcast channel |
 //! | [`SseSender`] | Imperative sender for [`channel()`] closures |
@@ -105,6 +108,33 @@
 //! Use [`LastEventId`] to read it and replay missed events from your
 //! data store. The SSE module does NOT replay automatically.
 //!
+//! ## Reverse proxy buffering (nginx)
+//!
+//! Nginx buffers responses by default, which breaks SSE entirely. The
+//! framework automatically sets the `X-Accel-Buffering: no` header on all
+//! SSE responses. If you use a different reverse proxy, ensure response
+//! buffering is disabled for SSE routes:
+//!
+//! ```nginx
+//! location /events {
+//!     proxy_buffering off;
+//!     proxy_pass http://backend;
+//! }
+//! ```
+//!
+//! ## HTTP compression
+//!
+//! Enabling `http.compression` in your server config applies
+//! `CompressionLayer` globally, which buffers response data before sending.
+//! This prevents SSE events from flushing to the client in real time.
+//! Disable compression if you use SSE:
+//!
+//! ```yaml
+//! server:
+//!     http:
+//!         compression: false
+//! ```
+//!
 //! ## Multi-line HTML
 //!
 //! Multi-line data (including HTML partials) is handled automatically per
@@ -114,6 +144,7 @@
 pub mod broadcast;
 pub mod config;
 pub mod event;
+pub mod extractor;
 pub mod last_event_id;
 pub mod response;
 pub mod sender;
@@ -122,6 +153,7 @@ pub mod stream_ext;
 pub use broadcast::{SseBroadcastManager, SseStream};
 pub use config::SseConfig;
 pub use event::SseEvent;
+pub use extractor::Sse;
 pub use last_event_id::LastEventId;
 pub use response::{SseResponse, from_stream};
 pub use sender::{SseSender, channel};
