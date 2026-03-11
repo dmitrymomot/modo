@@ -1,0 +1,96 @@
+#![cfg(feature = "sse")]
+
+use futures_util::StreamExt;
+use modo::sse::SseBroadcastManager;
+
+// Verify SseStream is publicly exported.
+#[allow(unused_imports)]
+use modo::sse::SseStream;
+
+#[tokio::test]
+async fn broadcast_subscribe_and_send() {
+    let mgr: SseBroadcastManager<String, String> = SseBroadcastManager::new(16);
+    let mut stream = mgr.subscribe(&"room1".into());
+
+    let count = mgr.send(&"room1".into(), "hello".into()).unwrap();
+    assert_eq!(count, 1);
+
+    let item = stream.next().await.unwrap().unwrap();
+    assert_eq!(item, "hello");
+}
+
+#[tokio::test]
+async fn broadcast_multiple_subscribers() {
+    let mgr: SseBroadcastManager<String, String> = SseBroadcastManager::new(16);
+    let mut s1 = mgr.subscribe(&"room".into());
+    let mut s2 = mgr.subscribe(&"room".into());
+
+    let count = mgr.send(&"room".into(), "msg".into()).unwrap();
+    assert_eq!(count, 2);
+
+    assert_eq!(s1.next().await.unwrap().unwrap(), "msg");
+    assert_eq!(s2.next().await.unwrap().unwrap(), "msg");
+}
+
+#[tokio::test]
+async fn broadcast_send_to_nonexistent_key_is_noop() {
+    let mgr: SseBroadcastManager<String, String> = SseBroadcastManager::new(16);
+    let count = mgr.send(&"nobody".into(), "hello".into()).unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn broadcast_subscriber_count() {
+    let mgr: SseBroadcastManager<String, i32> = SseBroadcastManager::new(16);
+    assert_eq!(mgr.subscriber_count(&"k".into()), 0);
+
+    let _s1 = mgr.subscribe(&"k".into());
+    assert_eq!(mgr.subscriber_count(&"k".into()), 1);
+
+    let _s2 = mgr.subscribe(&"k".into());
+    assert_eq!(mgr.subscriber_count(&"k".into()), 2);
+
+    drop(_s1);
+    // After drop, count may still be 2 until next operation triggers cleanup.
+    // Force cleanup by subscribing or sending.
+    let _ = mgr.send(&"k".into(), 0);
+    // tokio broadcast receiver_count decrements on drop
+    assert_eq!(mgr.subscriber_count(&"k".into()), 1);
+}
+
+#[tokio::test]
+async fn broadcast_auto_cleanup_on_last_unsubscribe() {
+    let mgr: SseBroadcastManager<String, String> = SseBroadcastManager::new(16);
+    let s = mgr.subscribe(&"temp".into());
+    assert_eq!(mgr.subscriber_count(&"temp".into()), 1);
+
+    drop(s);
+
+    // Trigger cleanup via send
+    let count = mgr.send(&"temp".into(), "test".into()).unwrap();
+    assert_eq!(count, 0);
+    // Channel should be pruned
+    assert_eq!(mgr.subscriber_count(&"temp".into()), 0);
+}
+
+#[tokio::test]
+async fn broadcast_remove() {
+    let mgr: SseBroadcastManager<String, String> = SseBroadcastManager::new(16);
+    let _s = mgr.subscribe(&"room".into());
+    assert_eq!(mgr.subscriber_count(&"room".into()), 1);
+
+    mgr.remove(&"room".into());
+    assert_eq!(mgr.subscriber_count(&"room".into()), 0);
+}
+
+#[tokio::test]
+async fn broadcast_stream_closed_when_sender_dropped() {
+    let mgr: SseBroadcastManager<String, String> = SseBroadcastManager::new(16);
+    let mut stream = mgr.subscribe(&"room".into());
+
+    mgr.remove(&"room".into());
+
+    // Stream should end (return None)
+    let next = stream.next().await;
+    assert!(next.is_none());
+}
