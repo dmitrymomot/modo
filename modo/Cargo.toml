@@ -73,3 +73,4 @@ tower = { version = "0.5", features = ["util"] }
 http = "1"
 minijinja = "2"
 serde = { version = "1", features = ["derive"] }
+tempfile = "3"

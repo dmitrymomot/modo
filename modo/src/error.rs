@@ -281,6 +281,13 @@ impl From<HttpError> for Error {
     }
 }
 
+#[cfg(feature = "templates")]
+impl From<crate::templates::TemplateError> for Error {
+    fn from(e: crate::templates::TemplateError) -> Self {
+        Error::internal(format!("Template render failed: {e}"))
+    }
+}
+
 impl From<anyhow::Error> for Error {
     fn from(err: anyhow::Error) -> Self {
         let message = err.to_string();
@@ -325,6 +332,11 @@ pub type JsonResult<T, E = Error> = Result<axum::Json<T>, E>;
 /// Convenience alias for generic handler results.
 /// Defaults to `Result<T, Error>`, but the error type can be overridden.
 pub type HandlerResult<T, E = Error> = Result<T, E>;
+
+/// Result type for handlers that use `ViewRenderer`.
+/// Supports rendering views, composing multiple views, and smart redirects.
+#[cfg(feature = "templates")]
+pub type ViewResult<E = Error> = Result<crate::templates::ViewResponse, E>;
 
 /// Signature for custom error handler functions.
 pub type ErrorHandlerFn = fn(Error, &ErrorContext) -> Response;

@@ -26,6 +26,22 @@ impl TemplateContext {
     pub fn into_values(self) -> BTreeMap<String, Value> {
         self.values
     }
+
+    /// Merge this context with user-provided context values.
+    /// User context values take precedence on key collision.
+    /// Returns a `minijinja::Value` ready for template rendering.
+    pub fn merge_with(&self, user_context: Value) -> Value {
+        let mut map = self.clone().into_values();
+        if let Ok(keys) = user_context.try_iter() {
+            for key in keys {
+                let k_str = key.to_string();
+                if let Ok(val) = user_context.get_attr(&k_str) {
+                    map.insert(k_str, val);
+                }
+            }
+        }
+        Value::from_serialize(&map)
+    }
 }
 
 #[cfg(test)]
