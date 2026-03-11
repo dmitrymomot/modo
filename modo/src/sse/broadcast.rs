@@ -95,15 +95,18 @@ where
     /// **Does NOT create a channel** -- only [`subscribe()`](Self::subscribe)
     /// creates channels lazily. Sending to a nonexistent key is a silent no-op.
     pub fn send(&self, key: &K, event: T) -> Result<usize, Error> {
-        let mut channels = self.channels.write().unwrap_or_else(|e| e.into_inner());
-
-        // Prune dead channels
-        channels.retain(|_, sender| sender.receiver_count() > 0);
-
+        // Read lock for the happy path — avoids serializing concurrent senders
+        let channels = self.channels.read().unwrap_or_else(|e| e.into_inner());
         if let Some(sender) = channels.get(key) {
             match sender.send(event) {
                 Ok(count) => Ok(count),
-                Err(_) => Ok(0), // All receivers dropped between retain and send
+                Err(_) => {
+                    // All receivers dropped — upgrade to write lock and prune
+                    drop(channels);
+                    let mut channels = self.channels.write().unwrap_or_else(|e| e.into_inner());
+                    channels.retain(|_, s| s.receiver_count() > 0);
+                    Ok(0)
+                }
             }
         } else {
             Ok(0)
