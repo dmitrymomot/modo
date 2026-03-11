@@ -50,7 +50,8 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Routes auto-discovered via `inventory` crate
 - DB extractor: `Db(db): Db`
 - Service extractor: `Service<MyType>`
-- Errors: `Result<T, Error>`
+- Errors: `Result<T, Error>` — prefer `HandlerResult<T>` alias; for JSON: `JsonResult<T>` (both accept optional custom error type as 2nd param)
+- JSON wrapper: `modo::Json<T>` (re-exported from axum) — use `modo::Json` not `modo::axum::Json`
 - Modules: `#[modo::module(prefix = "/path", middleware = [...])]`
 - CSRF: `#[middleware(modo::middleware::csrf_protection)]` — uses double-submit cookie
 - Flash messages: `Flash` (write) / `FlashMessages` (read) — cookie-based, one-shot
