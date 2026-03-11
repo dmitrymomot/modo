@@ -6,59 +6,60 @@
 
 ## Overview
 
-modo already has basic HTMX support: dual-template rendering via `#[view("page.html", htmx = "partial.html")]`, `hx-request` detection in the render layer, non-200 pass-through, and status forcing. This design extends that foundation with OOB swaps, a type-erased HTMX response type, a smart redirect, a request extractor, and a response builder.
+modo already has basic HTMX support: dual-template rendering via `#[view("page.html", htmx = "partial.html")]`, `hx-request` detection in the render layer, non-200 pass-through, and status forcing. This design extends that foundation with a type-erased HTMX response type, response composition (including OOB), a smart redirect, a request extractor, and a response builder.
+
+**Key principle:** OOB swap targeting (`hx-swap-oob`, `id` attributes) lives entirely in HTML templates. The server-side framework handles response composition, HTMX headers, and type-safe polymorphic returns — not OOB markup generation.
 
 ## Components
 
-### 1. `#[modo::view]` Macro — OOB Extension
+### 1. `#[modo::view]` Macro — No OOB Changes
 
-Extend the existing `#[view]` macro with an `oob` parameter. When present, the rendered output is wrapped with `hx-swap-oob` for out-of-band swapping.
+The existing `#[view]` macro is unchanged. OOB fragments are just regular views whose templates contain `hx-swap-oob` attributes.
 
 ```rust
 // Full page + HTMX partial (existing, unchanged)
 #[modo::view("pages/items.html", htmx = "partials/items.html")]
 struct ItemList { items: Vec<Item> }
 
-// OOB fragment — swaps into #notifications via innerHTML (default)
-#[modo::view("partials/toast_success.html", oob = "#notifications")]
+// OOB fragment — just a regular view, OOB targeting is in the template
+#[modo::view("partials/toast_success.html")]
 struct ToastSuccess { message: String, ttl: u32 }
 
-// OOB fragment — appends to table body
-#[modo::view("partials/row.html", oob = "beforeend:#table tbody")]
-struct NewRow { name: String, value: String }
+#[modo::view("partials/toast_error.html")]
+struct ToastError { message: String, ttl: u32 }
 ```
 
-**`oob` parameter format:** `"[strategy:]<css-selector>"`
-
-- `"#notifications"` — defaults to `innerHTML`, targets `#notifications`
-- `"beforeend:#table tbody"` — uses `beforeend` strategy, targets `#table tbody`
-- Supported strategies: `innerHTML` (default), `outerHTML`, `beforebegin`, `afterbegin`, `beforeend`, `afterend`, `delete`, `none`
-
-**Generated HTML output:**
+The OOB behavior is defined in the template itself:
 ```html
-<div id="notifications" hx-swap-oob="innerHTML:#notifications">
-  <!-- rendered template content -->
+<!-- partials/toast_success.html -->
+<div id="notifications" hx-swap-oob="innerHTML">
+  <div class="toast toast-success" data-ttl="{{ ttl }}">{{ message }}</div>
 </div>
 ```
 
-**Macro behavior:**
-- Fields must implement `Serialize` (same as existing `#[view]`)
-- Implements `IntoResponse` — renders template, wraps with OOB attribute
-- Implements `Into<Htmx>` for use in `HtmxResult`
-- When returned directly (not via `.with_oob()`), renders as a standalone OOB swap response with 200 status
-- When attached via `.with_oob()`, appends to the main response body
+```html
+<!-- partials/row.html (append to table body) -->
+<tr hx-swap-oob="beforeend:#items-table tbody">
+  <td>{{ name }}</td>
+  <td>{{ value }}</td>
+</tr>
+```
+
+**Macro behavior changes:**
+- `#[view]` now generates `Into<Htmx>` implementation (for use in `HtmxResult`)
+- `#[view]` now generates `.with_oob()` method (for composing responses)
 
 ### 2. `Htmx` Type — Type-Erased HTMX Response
 
 A type-erased response container that any `#[view]` struct can convert into via `.into()`. Enables polymorphic handler returns.
 
 ```rust
-pub struct Htmx { /* internal: boxed rendered response + OOB fragments + headers */ }
+pub struct Htmx { /* internal: boxed view + OOB fragments + HTMX headers */ }
 ```
 
 **Conversions:**
-- Any `#[view]` struct (with or without `oob`) converts via `.into()`
-- `modo::redirect()` converts via `.into()`
+- Any `#[view]` struct converts via `.into()`
+- `modo::Redirect` converts via `.into()`
 - `modo::htmx::response()` builder converts via `.into()`
 - Implements `IntoResponse`
 
@@ -68,11 +69,11 @@ pub struct Htmx { /* internal: boxed rendered response + OOB fragments + headers
 pub type HtmxResult<E = Error> = Result<Htmx, E>;
 ```
 
-Consistent with existing `HandlerResult<T, E>` and `JsonResult<T, E>` patterns.
+Note: unlike `HandlerResult<T, E>` and `JsonResult<T, E>`, the error type is the first (and only) generic parameter since `Htmx` is already type-erased.
 
 ### 4. `.with_oob()` Method
 
-Available on any `#[view]` struct. Attaches one or more OOB fragments to a response. Chainable.
+Available on any `#[view]` struct. Attaches one or more OOB fragments to a response. Chainable. The OOB fragment is just another `#[view]` struct — its template is rendered and appended to the response body. HTMX processes the `hx-swap-oob` attribute from the rendered HTML.
 
 ```rust
 // Single OOB
@@ -89,9 +90,13 @@ Ok(ItemList { items }
 
 **Implementation:** The `#[view]` macro generates a `.with_oob()` method that wraps `self` into an intermediate type holding the main view + a `Vec` of OOB fragments. This intermediate type implements `Into<Htmx>`.
 
+**Context merging:** OOB fragments go through the same `TemplateContext` merging as the main view, so `{{ csrf_token }}`, `{{ t("key") }}`, and other context values work in OOB templates.
+
 ### 5. `HtmxRequest` Extractor
 
 Parses HTMX-specific request headers. Implements axum's `FromRequestParts`.
+
+**Infallible:** always succeeds, even for non-HTMX requests. `is_htmx()` returns `false` when the `HX-Request` header is absent.
 
 ```rust
 pub struct HtmxRequest { /* parsed from headers */ }
@@ -140,11 +145,10 @@ A single function that produces the correct redirect for both HTMX and non-HTMX 
 pub fn redirect(url: impl Into<String>) -> Redirect;
 ```
 
-**Behavior:**
+`modo::Redirect` is a **new custom type** (not axum's `axum::response::Redirect`). It stashes the target URL in response extensions. The render layer detects it and emits:
+
 - Normal request: standard HTTP 302 redirect
 - HTMX request: `HX-Redirect` header + 200 status
-
-Detection happens at the response layer (render middleware or `IntoResponse` impl), not at call time. The function marks the response as "redirect to X" and the framework does the right thing based on the presence of `hx-request` header.
 
 **Return type compatibility:**
 ```rust
@@ -203,23 +207,29 @@ modo::htmx::response()
 
 **`HxLocation` struct:**
 ```rust
+#[derive(Serialize)]
 pub struct HxLocation {
     pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub swap: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub select: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub values: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<serde_json::Value>,
 }
 ```
 
 **Builder rules:**
-- `.redirect()`, `.location()`, `.refresh()` are mutually exclusive with `.render()` — redirect responses have no body
-- `.push_url()` and `.replace_url()` are mutually exclusive
+- `.redirect()`, `.location()`, `.refresh()` are mutually exclusive with `.render()` — redirect responses have no body. Conflicting calls panic at runtime on `.into()`.
+- `.push_url()` and `.replace_url()` are mutually exclusive. Conflicting calls panic at runtime on `.into()`.
 - Multiple `.trigger()` / `.trigger_with()` calls accumulate (serialized as JSON object in the header)
 - `.oob()` is chainable for multiple OOB fragments
 - `.render()` takes any `#[view]` struct
-- `.oob()` takes any `#[view]` struct with `oob` parameter
+- `.oob()` takes any `#[view]` struct (its template provides the OOB markup)
 - The whole builder converts `.into()` `Htmx`
 
 ## Response Types Summary
@@ -264,10 +274,10 @@ async fn list_items(Db(db): Db) -> HandlerResult<ItemList> {
 #[modo::view("partials/form.html")]
 struct CreateItemForm { values: CreateItem, errors: ValidationErrors }
 
-#[modo::view("partials/toast_success.html", oob = "#notifications")]
+#[modo::view("partials/toast_success.html")]
 struct ToastSuccess { message: String, ttl: u32 }
 
-#[modo::view("partials/toast_error.html", oob = "#notifications")]
+#[modo::view("partials/toast_error.html")]
 struct ToastError { message: String, ttl: u32 }
 
 #[modo::handler(POST, "/items")]
@@ -344,29 +354,32 @@ async fn delete_item(Db(db): Db, id: String) -> HtmxResult {
 
 ### Render Layer Changes
 
-The existing `RenderLayer` in `modo/src/templates/render.rs` needs to:
+The existing `RenderLayer` in `modo/src/templates/render.rs` needs to handle three extension types, checked in this order:
 
-1. Detect `Htmx` response type in extensions (alongside existing `View`)
-2. Render OOB fragments and append to response body
-3. Apply HTMX response headers from the builder
-4. Handle smart redirect detection (check `hx-request` header, emit `HX-Redirect` or 302)
-5. Force 200 status for all HTMX responses that carry rendered content
+1. **`Htmx`** — render main view (if present) + all OOB fragments, apply HTMX response headers, force 200 status
+2. **`View`** — existing behavior (render template, HTMX partial selection, status forcing)
+3. **`Redirect`** — check `hx-request` header, emit `HX-Redirect` + 200 or standard 302
+
+Additional render layer responsibilities:
+- OOB fragments go through the same `TemplateContext` merging as the main view
+- Add `Vary: HX-Request` header when response content differs based on HTMX detection
+- When `Htmx` contains a view with `htmx = "..."`, the dual-template selection (full page vs HTMX partial) still applies based on `hx-request` header
 
 ### View Macro Changes
 
 The `#[view]` macro in `modo-macros/src/view.rs` needs to:
 
-1. Parse the `oob` parameter: `oob = "strategy:#selector"` or `oob = "#selector"`
-2. Generate `Into<Htmx>` implementation
-3. Generate `.with_oob()` method
-4. When `oob` is present, wrap rendered output with `hx-swap-oob` attribute
+1. Generate `Into<Htmx>` implementation for all `#[view]` structs
+2. Generate `.with_oob()` method for all `#[view]` structs
+
+No `oob` parameter parsing — OOB markup lives in templates.
 
 ### No New Crates or Feature Flags
 
 All changes live in:
-- `modo-macros/` — macro extensions
-- `modo/src/templates/` — render layer, types, builder
-- `modo/src/` — `Htmx` type, `HtmxResult` alias, `redirect()`, `HtmxRequest` extractor
+- `modo-macros/` — macro extensions (`Into<Htmx>`, `.with_oob()`)
+- `modo/src/templates/` — render layer, `Htmx` type, builder
+- `modo/src/` — `HtmxResult` alias, `Redirect` type, `redirect()`, `HtmxRequest` extractor
 
 Everything is gated behind the existing `templates` feature.
 
@@ -376,3 +389,4 @@ Everything is gated behind the existing `templates` feature.
 - No HTMX extensions support (users add extensions via HTML)
 - No WebSocket/SSE integration (separate concern)
 - No HTMX-specific error handler (existing `ErrorContext::is_htmx()` suffices)
+- No server-side OOB markup generation — `hx-swap-oob` attributes belong in templates
