@@ -5,6 +5,8 @@ pub mod error;
 pub mod middleware;
 pub mod render;
 pub mod view;
+pub mod view_render;
+pub mod view_response;
 
 pub use config::TemplateConfig;
 pub use context::TemplateContext;
@@ -13,6 +15,8 @@ pub use error::TemplateError;
 pub use middleware::ContextLayer;
 pub use render::RenderLayer;
 pub use view::View;
+pub use view_render::ViewRender;
+pub use view_response::ViewResponse;
 
 /// Registration entry for auto-discovered template functions.
 pub struct TemplateFunctionEntry {
