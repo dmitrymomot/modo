@@ -1,14 +1,14 @@
 #![cfg(feature = "templates")]
 
 use axum::{
+    Router,
     body::Body,
     extract::Extension,
     routing::{get, post},
-    Router,
 };
 use http::{Request, StatusCode};
-use modo::templates::{engine, ContextLayer, TemplateConfig, TemplateEngine, ViewRenderer};
 use modo::ViewResult;
+use modo::templates::{ContextLayer, TemplateConfig, TemplateEngine, ViewRenderer, engine};
 use std::io::Write;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -49,13 +49,17 @@ struct DualView {
 
 // Test handler: single view
 async fn single_view(view: ViewRenderer) -> ViewResult {
-    view.render(HelloView { name: "World".into() })
+    view.render(HelloView {
+        name: "World".into(),
+    })
 }
 
 // Test handler: tuple of views
 async fn multi_view(view: ViewRenderer) -> ViewResult {
     view.render((
-        HelloView { name: "Alice".into() },
+        HelloView {
+            name: "Alice".into(),
+        },
         ToastView {
             message: "Done!".into(),
         },
@@ -137,11 +141,7 @@ async fn render_tuple_of_views() {
 async fn redirect_normal_request() {
     let (_dir, eng) = setup(&[]);
     let resp = app(eng)
-        .oneshot(
-            Request::post("/redirect")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::post("/redirect").body(Body::empty()).unwrap())
         .await
         .unwrap();
 
@@ -235,11 +235,7 @@ async fn dual_template_adds_vary_header() {
 async fn render_to_string_works() {
     let (_dir, eng) = setup(&[("hello.html", "Hello {{ name }}!")]);
     let resp = app(eng)
-        .oneshot(
-            Request::get("/render-string")
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(Request::get("/render-string").body(Body::empty()).unwrap())
         .await
         .unwrap();
 

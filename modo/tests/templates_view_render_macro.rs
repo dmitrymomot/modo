@@ -1,7 +1,7 @@
 #![cfg(feature = "templates")]
 
 use minijinja::Value;
-use modo::templates::{engine, TemplateConfig, TemplateContext, TemplateEngine, ViewRender};
+use modo::templates::{TemplateConfig, TemplateContext, TemplateEngine, ViewRender, engine};
 use std::io::Write;
 use tempfile::TempDir;
 
@@ -37,7 +37,9 @@ struct DualView {
 fn simple_view_implements_view_render() {
     let (_dir, eng) = setup_engine(&[("test.html", "Hello {{ name }}!")]);
     let ctx = TemplateContext::new();
-    let view = SimpleView { name: "World".into() };
+    let view = SimpleView {
+        name: "World".into(),
+    };
 
     let html = view.render_with(&eng, &ctx, false).unwrap();
     assert_eq!(html, "Hello World!");
@@ -45,7 +47,9 @@ fn simple_view_implements_view_render() {
 
 #[test]
 fn simple_view_has_no_dual_template() {
-    let view = SimpleView { name: "test".into() };
+    let view = SimpleView {
+        name: "test".into(),
+    };
     assert!(!view.has_dual_template());
 }
 
@@ -56,7 +60,9 @@ fn dual_view_selects_htmx_template() {
         ("partial.html", "Partial: {{ title }}"),
     ]);
     let ctx = TemplateContext::new();
-    let view = DualView { title: "Test".into() };
+    let view = DualView {
+        title: "Test".into(),
+    };
 
     let full = view.render_with(&eng, &ctx, false).unwrap();
     assert_eq!(full, "Full: Test");
@@ -67,7 +73,9 @@ fn dual_view_selects_htmx_template() {
 
 #[test]
 fn dual_view_has_dual_template() {
-    let view = DualView { title: "test".into() };
+    let view = DualView {
+        title: "test".into(),
+    };
     assert!(view.has_dual_template());
 }
 
@@ -76,7 +84,9 @@ fn view_render_merges_request_context() {
     let (_dir, eng) = setup_engine(&[("test.html", "{{ name }} ({{ csrf_token }})")]);
     let mut ctx = TemplateContext::new();
     ctx.insert("csrf_token", Value::from("abc123"));
-    let view = SimpleView { name: "World".into() };
+    let view = SimpleView {
+        name: "World".into(),
+    };
 
     let html = view.render_with(&eng, &ctx, false).unwrap();
     assert_eq!(html, "World (abc123)");

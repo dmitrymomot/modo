@@ -38,17 +38,17 @@ pub use axum::Json;
 pub use config::{AppConfig, HttpConfig, RateLimitConfig, SecurityHeadersConfig, TrailingSlash};
 pub use cookies::{CookieConfig, CookieManager, CookieOptions, SameSite};
 pub use cors::CorsConfig;
+#[cfg(feature = "templates")]
+pub use error::ViewResult;
 pub use error::{
     Error, ErrorContext, ErrorHandlerFn, ErrorHandlerRegistration, HandlerResult, HttpError,
     JsonResult,
 };
-#[cfg(feature = "templates")]
-pub use error::ViewResult;
 pub use middleware::{ClientIp, RateLimitInfo};
-#[cfg(feature = "templates")]
-pub use templates::{ViewRenderer, ViewResponse};
 pub use request_id::RequestId;
 pub use shutdown::{GracefulShutdown, ShutdownPhase};
+#[cfg(feature = "templates")]
+pub use templates::{ViewRenderer, ViewResponse};
 
 // Re-exports for macro-generated code
 pub use axum;

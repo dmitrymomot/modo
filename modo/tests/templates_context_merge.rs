@@ -9,7 +9,7 @@ fn merge_with_combines_request_and_user_context() {
     ctx.insert("request_key", Value::from("request_value"));
     ctx.insert("shared_key", Value::from("from_request"));
 
-    let user_ctx = Value::from_serialize(&serde_json::json!({
+    let user_ctx = Value::from_serialize(serde_json::json!({
         "user_key": "user_value",
         "shared_key": "from_user"
     }));

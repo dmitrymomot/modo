@@ -8,16 +8,9 @@ pub struct ViewResponse {
 }
 
 enum ViewResponseKind {
-    Html {
-        body: String,
-        vary: bool,
-    },
-    Redirect {
-        url: String,
-    },
-    HxRedirect {
-        url: String,
-    },
+    Html { body: String, vary: bool },
+    Redirect { url: String },
+    HxRedirect { url: String },
 }
 
 impl ViewResponse {
