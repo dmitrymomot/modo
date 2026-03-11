@@ -43,8 +43,10 @@ type ChatBroadcaster = SseBroadcastManager<String, ChatEvent>;
 
 // --- View structs ---
 
-#[modo::view("pages/login.html")]
-struct LoginPage {}
+#[modo::view("pages/login.html", htmx = "partials/login_form.html")]
+struct LoginPage {
+    error: Option<String>,
+}
 
 #[modo::view("pages/rooms.html")]
 struct RoomsPage {
@@ -98,17 +100,20 @@ async fn login_page(session: SessionManager, view: ViewRenderer) -> modo::ViewRe
     if session.is_authenticated().await {
         return view.redirect("/rooms");
     }
-    view.render(LoginPage {})
+    view.render(LoginPage { error: None })
 }
 
 #[modo::handler(POST, "/login")]
 async fn login_submit(
     session: SessionManager,
+    view: ViewRenderer,
     form: modo::extractors::Form<LoginForm>,
 ) -> modo::ViewResult {
     let username = form.username.trim().to_string();
     if username.len() < 2 || username.len() > 30 {
-        return Ok(modo::ViewResponse::redirect("/login"));
+        return view.render(LoginPage {
+            error: Some("Username must be between 2 and 30 characters".into()),
+        });
     }
     session.authenticate(&username).await?;
     Ok(modo::ViewResponse::redirect("/rooms"))
@@ -148,21 +153,16 @@ async fn chat_page(
         return view.redirect("/rooms");
     }
 
-    // Load last 50 messages from DB
-    use modo_db::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
-    let db_messages = message::Entity::find()
+    // Load last 50 messages from DB (newest first, then reverse for chronological order)
+    use modo_db::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+    let mut db_messages = message::Entity::find()
         .filter(message::Column::Room.eq(&room))
-        .order_by_asc(message::Column::CreatedAt)
+        .order_by_desc(message::Column::CreatedAt)
+        .limit(50)
         .all(&*db)
         .await
         .map_err(|e| modo::Error::internal(format!("Failed to load messages: {e}")))?;
-
-    // Take last 50
-    let db_messages: Vec<_> = if db_messages.len() > 50 {
-        db_messages[db_messages.len() - 50..].to_vec()
-    } else {
-        db_messages
-    };
+    db_messages.reverse();
 
     // Render each message as HTML
     let rendered: Vec<String> = db_messages
