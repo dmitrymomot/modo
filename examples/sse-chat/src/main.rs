@@ -13,6 +13,8 @@ struct Config {
     #[serde(flatten)]
     core: AppConfig,
     database: DatabaseConfig,
+    #[serde(default)]
+    cookie: modo::CookieConfig,
 }
 
 // --- Entity ---
@@ -66,6 +68,12 @@ struct MessagePartial {
     username: String,
     text: String,
     created_at: String,
+    is_own: bool,
+}
+
+#[modo::view("partials/send_form.html")]
+struct SendFormPartial {
+    room: String,
 }
 
 // --- Form ---
@@ -116,7 +124,7 @@ async fn login_submit(
         });
     }
     session.authenticate(&username).await?;
-    Ok(modo::ViewResponse::redirect("/rooms"))
+    view.redirect("/rooms")
 }
 
 #[modo::handler(GET, "/logout")]
@@ -168,10 +176,12 @@ async fn chat_page(
     let rendered: Vec<String> = db_messages
         .into_iter()
         .map(|m| {
+            let is_own = m.username == username;
             view.render_to_string(MessagePartial {
                 username: m.username,
                 text: m.text,
                 created_at: m.created_at.format("%H:%M:%S").to_string(),
+                is_own,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -186,14 +196,18 @@ async fn chat_page(
 #[modo::handler(GET, "/chat/{room}/events")]
 async fn chat_events(
     room: String,
+    session: SessionManager,
     view: ViewRenderer,
     Service(bc): Service<ChatBroadcaster>,
 ) -> SseResponse {
+    let current_user = session.user_id().await.unwrap_or_default();
     let stream = bc.subscribe(&room).sse_map(move |evt| {
+        let is_own = evt.username == current_user;
         let html = view.render_to_string(MessagePartial {
             username: evt.username,
             text: evt.text,
             created_at: evt.created_at,
+            is_own,
         })?;
         Ok(SseEvent::new().event("message").html(html))
     });
@@ -204,10 +218,11 @@ async fn chat_events(
 async fn chat_send(
     room: String,
     session: SessionManager,
+    view: ViewRenderer,
     Db(db): Db,
     Service(bc): Service<ChatBroadcaster>,
     form: modo::extractors::Form<SendForm>,
-) -> modo::HandlerResult<modo::axum::http::StatusCode> {
+) -> modo::ViewResult {
     let username = session
         .user_id()
         .await
@@ -245,7 +260,7 @@ async fn chat_send(
         },
     );
 
-    Ok(modo::axum::http::StatusCode::NO_CONTENT)
+    view.render(SendFormPartial { room })
 }
 
 // --- Entry point ---
@@ -261,7 +276,7 @@ async fn main(
     let session_store = modo_session::SessionStore::new(
         &db,
         modo_session::SessionConfig::default(),
-        modo::CookieConfig::default(),
+        config.cookie,
     );
 
     let bc: ChatBroadcaster = SseBroadcastManager::new(128);

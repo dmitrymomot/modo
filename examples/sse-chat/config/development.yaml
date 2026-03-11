@@ -9,6 +9,8 @@ server:
         prefix: /static
 templates:
     path: templates
+cookie:
+    secure: false
 database:
     url: ${DATABASE_URL:-sqlite://chat.db?mode=rwc}
     max_connections: 5
