@@ -1,5 +1,7 @@
 #![cfg(feature = "templates")]
 
+mod common;
+
 use axum::{
     Router,
     body::Body,
@@ -8,27 +10,12 @@ use axum::{
 };
 use http::{Request, StatusCode};
 use modo::ViewResult;
-use modo::templates::{ContextLayer, TemplateConfig, TemplateEngine, ViewRenderer, engine};
-use std::io::Write;
+use modo::templates::{ContextLayer, TemplateEngine, ViewRenderer};
 use std::sync::Arc;
-use tempfile::TempDir;
 use tower::ServiceExt;
 
-fn setup(templates: &[(&str, &str)]) -> (TempDir, Arc<TemplateEngine>) {
-    let dir = TempDir::new().unwrap();
-    for (name, content) in templates {
-        let path = dir.path().join(name);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        let mut f = std::fs::File::create(path).unwrap();
-        f.write_all(content.as_bytes()).unwrap();
-    }
-    let config = TemplateConfig {
-        path: dir.path().to_string_lossy().to_string(),
-        ..Default::default()
-    };
-    let eng = engine(&config).unwrap();
+fn setup_arc(templates: &[(&str, &str)]) -> (tempfile::TempDir, Arc<TemplateEngine>) {
+    let (dir, eng) = common::setup_engine(templates);
     (dir, Arc::new(eng))
 }
 
@@ -112,7 +99,7 @@ async fn body_string(resp: axum::response::Response) -> String {
 
 #[tokio::test]
 async fn render_single_view() {
-    let (_dir, eng) = setup(&[("hello.html", "Hello {{ name }}!")]);
+    let (_dir, eng) = setup_arc(&[("hello.html", "Hello {{ name }}!")]);
     let resp = app(eng)
         .oneshot(Request::get("/hello").body(Body::empty()).unwrap())
         .await
@@ -124,7 +111,7 @@ async fn render_single_view() {
 
 #[tokio::test]
 async fn render_tuple_of_views() {
-    let (_dir, eng) = setup(&[
+    let (_dir, eng) = setup_arc(&[
         ("hello.html", "Hello {{ name }}!"),
         ("toast.html", "<div>{{ message }}</div>"),
     ]);
@@ -139,7 +126,7 @@ async fn render_tuple_of_views() {
 
 #[tokio::test]
 async fn redirect_normal_request() {
-    let (_dir, eng) = setup(&[]);
+    let (_dir, eng) = setup_arc(&[]);
     let resp = app(eng)
         .oneshot(Request::post("/redirect").body(Body::empty()).unwrap())
         .await
@@ -151,7 +138,7 @@ async fn redirect_normal_request() {
 
 #[tokio::test]
 async fn redirect_htmx_request() {
-    let (_dir, eng) = setup(&[]);
+    let (_dir, eng) = setup_arc(&[]);
     let resp = app(eng)
         .oneshot(
             Request::post("/redirect")
@@ -168,7 +155,7 @@ async fn redirect_htmx_request() {
 
 #[tokio::test]
 async fn is_htmx_detection() {
-    let (_dir, eng) = setup(&[]);
+    let (_dir, eng) = setup_arc(&[]);
 
     // Normal request
     let resp = app(Arc::clone(&eng))
@@ -192,7 +179,7 @@ async fn is_htmx_detection() {
 
 #[tokio::test]
 async fn dual_template_selects_htmx_partial() {
-    let (_dir, eng) = setup(&[
+    let (_dir, eng) = setup_arc(&[
         ("page.html", "Full: {{ title }}"),
         ("partial.html", "Partial: {{ title }}"),
     ]);
@@ -219,7 +206,7 @@ async fn dual_template_selects_htmx_partial() {
 
 #[tokio::test]
 async fn dual_template_adds_vary_header() {
-    let (_dir, eng) = setup(&[
+    let (_dir, eng) = setup_arc(&[
         ("page.html", "Full: {{ title }}"),
         ("partial.html", "Partial: {{ title }}"),
     ]);
@@ -233,7 +220,7 @@ async fn dual_template_adds_vary_header() {
 
 #[tokio::test]
 async fn render_to_string_works() {
-    let (_dir, eng) = setup(&[("hello.html", "Hello {{ name }}!")]);
+    let (_dir, eng) = setup_arc(&[("hello.html", "Hello {{ name }}!")]);
     let resp = app(eng)
         .oneshot(Request::get("/render-string").body(Body::empty()).unwrap())
         .await
@@ -241,4 +228,24 @@ async fn render_to_string_works() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(body_string(resp).await, "Hello String!");
+}
+
+#[tokio::test]
+async fn extraction_fails_without_template_engine() {
+    // Router without Extension(engine) — ViewRenderer extraction should fail
+    let app = Router::new()
+        .route("/hello", get(single_view))
+        .layer(ContextLayer::new());
+
+    let resp = app
+        .oneshot(Request::get("/hello").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("internal_server_error"),
+        "expected internal_server_error code, got: {body}"
+    );
 }
