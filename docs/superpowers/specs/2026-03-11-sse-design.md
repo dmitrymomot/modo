@@ -16,15 +16,15 @@ Add Server-Sent Events support to the `modo` core crate as an opt-in feature fla
 
 ## Design Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Module location | `modo/` core crate, feature = `"sse"` | SSE is an HTTP response type, belongs with `Json`, `ViewResponse` |
-| Room/channel management | Not included | Domain logic — varies per use case |
-| Format selection | Per-handler | Each endpoint explicitly chooses JSON, HTML, or text |
-| Template rendering in SSE | Handler responsibility | SSE module is format-agnostic; handler uses `ViewRenderer::render_to_string()` |
-| Broadcast model | All subscribers of a key receive all messages | Filter on consumer side via stream combinators |
-| Global broadcast (`send_all`) | Not included | Rare in multi-tenant SaaS; YAGNI |
-| Send to specific subscriber | Not included | No compelling use case within a keyed channel |
+| Decision                      | Choice                                        | Rationale                                                                      |
+| ----------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------ |
+| Module location               | `modo/` core crate, feature = `"sse"`         | SSE is an HTTP response type, belongs with `Json`, `ViewResponse`              |
+| Room/channel management       | Not included                                  | Domain logic — varies per use case                                             |
+| Format selection              | Per-handler                                   | Each endpoint explicitly chooses JSON, HTML, or text                           |
+| Template rendering in SSE     | Handler responsibility                        | SSE module is format-agnostic; handler uses `ViewRenderer::render_to_string()` |
+| Broadcast model               | All subscribers of a key receive all messages | Filter on consumer side via stream combinators                                 |
+| Global broadcast (`send_all`) | Not included                                  | Rare in multi-tenant SaaS; YAGNI                                               |
+| Send to specific subscriber   | Not included                                  | No compelling use case within a keyed channel                                  |
 
 ## Dependencies
 
@@ -70,7 +70,7 @@ Optional YAML-deserializable configuration. Added as a field on `AppConfig` (gat
 
 ```yaml
 sse:
-  keep_alive_interval_secs: 15   # default: 15 seconds
+    keep_alive_interval_secs: 15 # default: 15 seconds
 ```
 
 ```rust
@@ -264,6 +264,7 @@ pub mod sse;
 ```
 
 Public items from `modo::sse`:
+
 - `SseEvent`, `SseResponse`, `SseConfig`
 - `SseSender`, `LastEventId`
 - `SseBroadcastManager`, `SseStream`
@@ -298,6 +299,7 @@ modo/src/sse/
 The global `TimeoutLayer` in `AppBuilder::run()` will kill SSE connections after the configured timeout. Keep-alive events do NOT reset the timer — the timer is set at request start for the full response lifecycle.
 
 **Mitigation:** Apps using SSE should either:
+
 - Set a long request timeout (e.g., `http.request_timeout: 3600` for 1 hour)
 - Disable the global timeout and apply per-route timeouts to non-SSE handlers instead
 
@@ -306,6 +308,12 @@ This interaction should be documented prominently in the module docs.
 ### `Last-Event-ID` reconnection flow
 
 When a client reconnects after a disconnect, the browser's `EventSource` sends a `Last-Event-ID` header with the last received event ID. Handlers can read this via the `LastEventId` extractor to replay missed events. The SSE module does NOT handle replay automatically — replay logic (e.g., fetching missed messages from a database) is application responsibility.
+
+### Multi-line HTML partials
+
+Axum's `Event::data()` automatically handles multi-line content per the SSE spec — each line is prefixed with `data:` and the browser's `EventSource` reassembles them (joining with `\n`) before firing the event. The `.html()` method delegates to `.data()`, so no special handling is needed.
+
+However, SSE has no built-in chunking or compression — the entire event is buffered and sent as one unit. **Best practice: keep SSE HTML partials small.** Send individual components (a single chat bubble, one table row, one notification card), not entire page sections. For large updates, send a JSON event that triggers an HTMX swap via a separate fetch.
 
 ## Documentation Requirements
 
