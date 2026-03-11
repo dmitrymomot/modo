@@ -42,6 +42,8 @@ pub use error::{
     Error, ErrorContext, ErrorHandlerFn, ErrorHandlerRegistration, HandlerResult, HttpError,
     JsonResult,
 };
+#[cfg(feature = "templates")]
+pub use error::ViewResult;
 pub use middleware::{ClientIp, RateLimitInfo};
 pub use request_id::RequestId;
 pub use shutdown::{GracefulShutdown, ShutdownPhase};
