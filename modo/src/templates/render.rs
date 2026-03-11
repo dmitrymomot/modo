@@ -93,7 +93,7 @@ where
             };
 
             // Merge request context with user context
-            let merged = merge_contexts(template_ctx, view.user_context);
+            let merged = template_ctx.merge_with(view.user_context);
 
             match engine.render(template_name, merged) {
                 Ok(html) => {
@@ -121,22 +121,4 @@ where
             }
         })
     }
-}
-
-/// Merge request-scoped context (locale, csrf, etc.) with user context (struct fields).
-/// User context values take precedence over request context on key collision.
-fn merge_contexts(request_ctx: TemplateContext, user_ctx: minijinja::Value) -> minijinja::Value {
-    let mut map = request_ctx.into_values();
-
-    // user_ctx is a struct serialized to Value — iterate its keys
-    if let Ok(keys) = user_ctx.try_iter() {
-        for key in keys {
-            let k_str: String = key.to_string();
-            if let Ok(val) = user_ctx.get_attr(&k_str) {
-                map.insert(k_str, val);
-            }
-        }
-    }
-
-    minijinja::Value::from_serialize(&map)
 }
