@@ -41,11 +41,20 @@ pub(crate) const DEFAULT_LAYOUT: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
+/// Renders HTML layout templates using [MiniJinja](https://docs.rs/minijinja).
+///
+/// The engine always includes a built-in `"default"` layout. Additional layouts
+/// are loaded from `{templates_path}/layouts/*.html` at construction time and
+/// override the built-in if they share the same name.
+///
+/// Auto-escaping is disabled because the `content` variable is already rendered HTML.
 pub struct LayoutEngine {
     env: minijinja::Environment<'static>,
 }
 
 impl LayoutEngine {
+    /// Create a `LayoutEngine` that loads custom `.html` layouts from
+    /// `{templates_path}/layouts/` in addition to the built-in `"default"` layout.
     pub fn new(templates_path: &str) -> Self {
         let mut env = Self::base_env();
 
@@ -70,12 +79,19 @@ impl LayoutEngine {
         Self { env }
     }
 
+    /// Create a `LayoutEngine` with only the built-in `"default"` layout.
+    ///
+    /// Useful in tests or when no custom layouts are needed.
     pub fn builtin_only() -> Self {
         Self {
             env: Self::base_env(),
         }
     }
 
+    /// Render the named layout with the provided MiniJinja context.
+    ///
+    /// `layout_name` is looked up as `layouts/{layout_name}.html`. Returns an
+    /// error if the layout does not exist or if rendering fails.
     pub fn render(
         &self,
         layout_name: &str,

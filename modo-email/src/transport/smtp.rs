@@ -5,11 +5,18 @@ use lettre::message::{MultiPart, SinglePart, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
+/// SMTP delivery backend backed by [lettre](https://docs.rs/lettre).
+///
+/// Requires the `smtp` feature.
 pub struct SmtpTransport {
     mailer: AsyncSmtpTransport<Tokio1Executor>,
 }
 
 impl SmtpTransport {
+    /// Create an SMTP transport from `SmtpConfig`.
+    ///
+    /// When `config.tls` is `true`, uses STARTTLS via `relay()`.
+    /// When `false`, connects without TLS (useful for local dev or trusted relays).
     pub fn new(config: &SmtpConfig) -> Result<Self, modo::Error> {
         let creds = Credentials::new(config.username.clone(), config.password.clone());
 

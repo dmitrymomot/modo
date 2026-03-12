@@ -4,8 +4,11 @@ use std::collections::HashMap;
 /// Sender identity for outgoing emails.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SenderProfile {
+    /// Display name shown in the `From` header.
     pub from_name: String,
+    /// Email address used in the `From` header.
     pub from_email: String,
+    /// Optional `Reply-To` address.
     pub reply_to: Option<String>,
 }
 
@@ -32,15 +35,25 @@ impl SenderProfile {
 /// A fully-rendered email ready for transport.
 #[derive(Debug, Clone)]
 pub struct MailMessage {
+    /// Formatted `From` address (e.g. `"Name <email@example.com>"`).
     pub from: String,
+    /// Optional `Reply-To` address.
     pub reply_to: Option<String>,
+    /// List of recipient addresses.
     pub to: Vec<String>,
+    /// Email subject line with variables already substituted.
     pub subject: String,
+    /// Rendered HTML body wrapped in a layout.
     pub html: String,
+    /// Plain-text body derived from Markdown.
     pub text: String,
 }
 
 /// Builder for requesting a templated email send.
+///
+/// Create with [`SendEmail::new`], then chain builder methods to set
+/// recipients, locale, sender override, and template variables before
+/// passing to `Mailer::send` or `Mailer::render`.
 #[derive(Debug, Clone)]
 pub struct SendEmail {
     pub(crate) template: String,
@@ -51,6 +64,7 @@ pub struct SendEmail {
 }
 
 impl SendEmail {
+    /// Create a new send request for the named template addressed to `to`.
     pub fn new(template: &str, to: &str) -> Self {
         Self {
             template: template.to_string(),
@@ -67,28 +81,41 @@ impl SendEmail {
         self
     }
 
+    /// Set the locale used for template resolution. Falls back to the root
+    /// template when no localized variant is found.
     pub fn locale(mut self, locale: &str) -> Self {
         self.locale = Some(locale.to_string());
         self
     }
 
+    /// Override the default sender with a per-email `SenderProfile`.
     pub fn sender(mut self, sender: &SenderProfile) -> Self {
         self.sender = Some(sender.clone());
         self
     }
 
+    /// Insert a single template variable by key.
+    ///
+    /// The value can be any type that converts to [`serde_json::Value`]
+    /// (e.g. `&str`, `String`, `i64`, `bool`).
     pub fn var(mut self, key: &str, value: impl Into<serde_json::Value>) -> Self {
         self.context.insert(key.to_string(), value.into());
         self
     }
 
+    /// Merge an entire context map into the template variables.
+    ///
+    /// Existing keys are overwritten by keys in `ctx`.
     pub fn context(mut self, ctx: &HashMap<String, serde_json::Value>) -> Self {
         self.context.extend(ctx.clone());
         self
     }
 }
 
-/// Serializable version of `SendEmail` for job payloads.
+/// Serializable mirror of [`SendEmail`] for async job queue payloads.
+///
+/// Convert from a [`SendEmail`] before enqueuing, and back to [`SendEmail`]
+/// inside the worker via the provided `From` impls.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendEmailPayload {
     pub template: String,

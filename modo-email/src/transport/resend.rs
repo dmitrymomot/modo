@@ -2,12 +2,16 @@ use super::MailTransport;
 use crate::config::ResendConfig;
 use crate::message::MailMessage;
 
+/// Resend HTTP API delivery backend.
+///
+/// Requires the `resend` feature.
 pub struct ResendTransport {
     client: reqwest::Client,
     api_key: String,
 }
 
 impl ResendTransport {
+    /// Create a Resend transport from `ResendConfig`.
     pub fn new(config: &ResendConfig) -> Result<Self, modo::Error> {
         let client = reqwest::Client::new();
         Ok(Self {
