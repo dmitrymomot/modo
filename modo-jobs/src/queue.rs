@@ -6,7 +6,15 @@ use modo_db::sea_orm::{ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, 
 
 /// Handle for enqueuing and cancelling jobs.
 ///
-/// Implements `FromRequestParts` for use as an axum extractor.
+/// Obtain this in an axum handler via the extractor implementation:
+///
+/// ```rust,ignore
+/// async fn my_handler(queue: JobQueue) { ... }
+/// ```
+///
+/// `JobQueue` implements `FromRequestParts<AppState>` and resolves from the
+/// `JobsHandle` registered as a service.  The `JobsHandle` itself also
+/// `Deref`s to `JobQueue` for use outside of HTTP handlers.
 #[derive(Clone)]
 pub struct JobQueue {
     pub(crate) db: modo_db::sea_orm::DatabaseConnection,
@@ -14,6 +22,10 @@ pub struct JobQueue {
 }
 
 impl JobQueue {
+    /// Create a new `JobQueue` wrapping the given database pool.
+    ///
+    /// `max_payload_bytes` sets an optional upper bound on serialized payload
+    /// size; `None` disables the check.
     pub fn new(db: &modo_db::pool::DbPool, max_payload_bytes: Option<usize>) -> Self {
         Self {
             db: db.connection().clone(),
@@ -22,6 +34,11 @@ impl JobQueue {
     }
 
     /// Enqueue a job for immediate execution.
+    ///
+    /// The job is inserted with `run_at = now()` and the defaults registered
+    /// via `#[job]` (queue, priority, max_attempts, timeout).
+    ///
+    /// Returns the new [`JobId`] on success.
     pub async fn enqueue<T: serde::Serialize>(
         &self,
         name: &str,
@@ -31,6 +48,11 @@ impl JobQueue {
     }
 
     /// Enqueue a job to run at a specific time.
+    ///
+    /// The job will not be picked up by any worker before `run_at`.
+    ///
+    /// Returns an error if the job name is not registered or the serialized
+    /// payload exceeds `max_payload_bytes`.
     pub async fn enqueue_at<T: serde::Serialize>(
         &self,
         name: &str,
@@ -58,6 +80,9 @@ impl JobQueue {
     }
 
     /// Cancel a pending job by ID.
+    ///
+    /// Only jobs in the `Pending` state can be cancelled.  Returns an error if
+    /// the job is not found or is already running, completed, or dead.
     pub async fn cancel(&self, id: &JobId) -> Result<(), modo::Error> {
         let result = modo_db::sea_orm::UpdateMany::exec(
             job::Entity::update_many()

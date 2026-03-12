@@ -1,3 +1,9 @@
+//! Axum extractor for [`JobQueue`].
+//!
+//! This module provides `FromRequestParts<AppState>` for [`JobQueue`] so that
+//! handlers can receive a queue handle as an extractor argument without any
+//! manual wiring.  The implementation resolves the queue from the
+//! [`crate::JobsHandle`] registered as a service.
 use crate::queue::JobQueue;
 use crate::runner::JobsHandle;
 use modo::app::AppState;

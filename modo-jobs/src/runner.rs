@@ -17,9 +17,12 @@ use tokio::sync::{Notify, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-/// Handle returned from `start()`. Provides job enqueuing and shutdown control.
+/// Handle returned from [`start`].  Provides job enqueuing and graceful shutdown.
 ///
-/// Implements `Deref<Target = JobQueue>` for easy access to enqueue/cancel.
+/// `JobsHandle` implements [`Deref<Target = JobQueue>`] so all enqueue/cancel
+/// methods are available directly on the handle.  It also implements
+/// [`modo::GracefulShutdown`] so it integrates with the framework shutdown
+/// sequence when registered via `app.managed_service(jobs)`.
 #[derive(Clone)]
 pub struct JobsHandle {
     pub(crate) queue: JobQueue,
@@ -46,7 +49,7 @@ impl JobsHandle {
         }
     }
 
-    /// Get a reference to the cancellation token.
+    /// Return a reference to the underlying cancellation token.
     pub fn cancel_token(&self) -> &CancellationToken {
         &self.cancel
     }
@@ -85,7 +88,19 @@ struct PollContext {
 
 /// Start the job runner: spawns poll loops, stale reaper, cleanup, and cron scheduler.
 ///
-/// Returns a `JobsHandle` that should be registered as a service.
+/// Call this once during application startup, passing:
+/// - `db` — the active database pool
+/// - `config` — queue and timing configuration (validated before any task is spawned)
+/// - `services` — service registry made available inside job handlers via [`JobContext`]
+///
+/// Returns a [`JobsHandle`] that should be registered with
+/// `app.managed_service(jobs)` to enable graceful shutdown.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The configuration fails validation (see [`JobsConfig::validate`])
+/// - A registered job references a queue not present in `config.queues`
 pub async fn start(
     db: &modo_db::pool::DbPool,
     config: &JobsConfig,
