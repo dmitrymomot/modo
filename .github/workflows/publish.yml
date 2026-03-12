@@ -16,8 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -31,6 +29,7 @@ jobs:
 
           # Publishable crates in dependency order.
           # Format: "directory:package-name"
+          # Note: modo-cli is intentionally excluded (publish = false in Cargo.toml).
           CRATES=(
             "modo-macros:modo-macros"
             "modo-db-macros:modo-db-macros"
@@ -53,9 +52,9 @@ jobs:
             name="${entry##*:}"
             toml="$dir/Cargo.toml"
 
-            # Get previous version (treat missing file as "new crate").
-            old_version=$(git show HEAD~1:"$toml" 2>/dev/null \
-              | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/') || old_version=""
+            # Get the currently published version from crates.io (empty if unpublished).
+            old_version=$(cargo search "$name" --limit 1 2>/dev/null \
+              | grep "^${name} " | sed 's/.*= "\(.*\)".*/\1/') || old_version=""
 
             new_version=$(grep '^version' "$toml" | head -1 | sed 's/.*"\(.*\)"/\1/')
 
@@ -65,12 +64,21 @@ jobs:
             fi
 
             echo "Publishing $name $new_version (was ${old_version:-<new>})..."
-            cargo publish -p "$name" --no-verify
+            cargo publish -p "$name"
             published=$((published + 1))
 
-            # Allow crates.io index to propagate before publishing dependents.
-            echo "Waiting 30s for index propagation..."
-            sleep 30
+            # Wait for crates.io index to reflect the new version before publishing dependents.
+            echo "Waiting for $name $new_version to appear in crates.io index..."
+            for i in $(seq 1 12); do
+              sleep 10
+              indexed=$(cargo search "$name" --limit 1 2>/dev/null \
+                | grep "^${name} " | sed 's/.*= "\(.*\)".*/\1/') || indexed=""
+              if [ "$indexed" = "$new_version" ]; then
+                echo "$name $new_version is indexed."
+                break
+              fi
+              echo "Attempt $i/12: index shows '${indexed:-<none>}', waiting..."
+            done
           done
 
           echo "Done. Published $published crate(s)."
