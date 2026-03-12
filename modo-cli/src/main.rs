@@ -23,7 +23,7 @@ enum Commands {
         postgres: bool,
 
         /// Use SQLite database driver (default)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "postgres")]
         sqlite: bool,
     },
 }
