@@ -63,10 +63,7 @@ async fn broadcast_auto_cleanup_on_last_unsubscribe() {
 
     drop(s);
 
-    // Trigger cleanup via send
-    let count = mgr.send(&"temp".into(), "test".into()).unwrap();
-    assert_eq!(count, 0);
-    // Channel should be pruned
+    // Drop cleanup closure removes the channel immediately — no send() needed
     assert_eq!(mgr.subscriber_count(&"temp".into()), 0);
 }
 
