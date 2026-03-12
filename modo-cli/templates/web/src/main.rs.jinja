@@ -14,7 +14,7 @@ async fn main(
 
     let jobs_db = modo_db::connect(&config.jobs_database).await?;
     modo_db::sync_and_migrate_group(&jobs_db, "jobs").await?;
-    modo_db::sync_and_migrate(&db).await?;
+    modo_db::sync_and_migrate_group(&db, "default").await?;
 {%- else %}
 
     modo_db::sync_and_migrate(&db).await?;

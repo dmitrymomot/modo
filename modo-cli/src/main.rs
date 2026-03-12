@@ -56,11 +56,13 @@ impl Template {
     }
 }
 
+// Strict keywords + reserved-for-future-use keywords
 const RUST_KEYWORDS: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
-    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
-    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
-    "unsafe", "use", "where", "while", "yield",
+    "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+    "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "if", "impl", "in",
+    "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub", "ref",
+    "return", "self", "Self", "static", "struct", "super", "trait", "true", "try", "type",
+    "typeof", "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
 ];
 
 fn validate_project_name(name: &str) -> anyhow::Result<()> {
@@ -148,10 +150,17 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("warning: git init failed (exit {})", status);
             }
 
-            println!(
-                "Created modo project '{}' with template '{}' ({})\n",
-                name, template_name, db_driver
-            );
+            if db_driver.is_empty() {
+                println!(
+                    "Created modo project '{}' with template '{}'\n",
+                    name, template_name
+                );
+            } else {
+                println!(
+                    "Created modo project '{}' with template '{}' ({})\n",
+                    name, template_name, db_driver
+                );
+            }
 
             println!("Next steps:");
             println!("  cd {}", name);
@@ -236,5 +245,7 @@ mod tests {
         assert!(validate_project_name("a/b").is_err());
         assert!(validate_project_name("fn").is_err());
         assert!(validate_project_name("struct").is_err());
+        assert!(validate_project_name("try").is_err());
+        assert!(validate_project_name("abstract").is_err());
     }
 }

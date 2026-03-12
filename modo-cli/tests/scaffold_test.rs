@@ -151,11 +151,21 @@ fn scaffold_web() {
         "web config.rs should have jobs_database field"
     );
 
-    // main.rs should have dual-DB logic
+    // data/ directory for SQLite should exist
+    assert!(
+        dir.join("data").is_dir(),
+        "web scaffold should create data/ directory for SQLite"
+    );
+
+    // main.rs should have dual-DB logic with group filtering
     let main_rs = fs::read_to_string(dir.join("src/main.rs")).unwrap();
     assert!(
-        main_rs.contains("sync_and_migrate_group"),
-        "web main.rs should use sync_and_migrate_group"
+        main_rs.contains("sync_and_migrate_group(&db, \"default\")"),
+        "web main.rs should use sync_and_migrate_group with \"default\" group"
+    );
+    assert!(
+        main_rs.contains("sync_and_migrate_group(&jobs_db, \"jobs\")"),
+        "web main.rs should use sync_and_migrate_group with \"jobs\" group"
     );
 
     let prod_cfg = fs::read_to_string(dir.join("config/production.yaml")).unwrap();
@@ -172,11 +182,21 @@ fn scaffold_worker() {
     assert!(!dir.join("src/handlers").exists());
     assert!(!dir.join("src/views").exists());
 
+    // data/ directory for SQLite should exist
+    assert!(
+        dir.join("data").is_dir(),
+        "worker scaffold should create data/ directory for SQLite"
+    );
+
     let main_rs = fs::read_to_string(dir.join("src/main.rs")).unwrap();
     assert!(main_rs.contains("modo_jobs::new"));
     assert!(
-        main_rs.contains("sync_and_migrate_group"),
-        "worker main.rs should use sync_and_migrate_group"
+        main_rs.contains("sync_and_migrate_group(&db, \"default\")"),
+        "worker main.rs should use sync_and_migrate_group with \"default\" group"
+    );
+    assert!(
+        main_rs.contains("sync_and_migrate_group(&jobs_db, \"jobs\")"),
+        "worker main.rs should use sync_and_migrate_group with \"jobs\" group"
     );
 
     // Worker config should have jobs_database field
@@ -259,11 +279,9 @@ fn no_unrendered_placeholders() {
                 continue;
             }
             let content = fs::read_to_string(&path).unwrap_or_default();
-            // Check for any unrendered MiniJinja placeholder
+            // Check for any unrendered MiniJinja placeholder (catches both {{ x }} and {{x}})
             assert!(
-                !content.contains("{{ ")
-                    && !content.contains("{{project")
-                    && !content.contains("{{db"),
+                !content.contains("{{"),
                 "unrendered placeholder in {}",
                 path.display()
             );
