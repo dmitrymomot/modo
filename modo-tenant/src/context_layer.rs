@@ -7,8 +7,17 @@ use modo::templates::TemplateContext;
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
 
-/// Layer that injects the resolved tenant into TemplateContext.
-/// Graceful: skips if no tenant is resolved.
+/// Tower layer that injects the resolved tenant into the request's [`TemplateContext`].
+///
+/// When a tenant is resolved successfully the layer inserts it under the key
+/// `"tenant"` in the [`TemplateContext`] extension so that templates can access
+/// tenant data directly. If resolution fails the error is logged at `WARN` level
+/// and the request continues without a tenant in the context.
+///
+/// If no [`TemplateContext`] extension is present the layer is a no-op for
+/// context injection but still passes the request through.
+///
+/// Requires feature `"templates"`.
 pub struct TenantContextLayer<T>
 where
     T: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static,
@@ -31,6 +40,7 @@ impl<T> TenantContextLayer<T>
 where
     T: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static,
 {
+    /// Creates a new `TenantContextLayer` backed by `tenant_svc`.
     pub fn new(tenant_svc: TenantResolverService<T>) -> Self {
         Self { tenant_svc }
     }

@@ -3,15 +3,30 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-/// Trait that tenant types must implement to expose their ID.
+/// Trait that tenant types must implement to expose their unique identifier.
 pub trait HasTenantId {
+    /// Returns the tenant's unique identifier as a string slice.
     fn tenant_id(&self) -> &str;
 }
 
-/// Pluggable tenant resolution from HTTP request parts.
+/// Pluggable strategy for resolving a tenant from incoming HTTP request parts.
+///
+/// Implement this trait to teach the framework how to identify a tenant from
+/// any signal in the request (subdomain, header, path, cookie, etc.). The
+/// associated `Tenant` type must also implement [`HasTenantId`] and
+/// [`serde::Serialize`] so it can be forwarded to template engines.
+///
+/// Return `Ok(None)` when no tenant can be identified (e.g., a public route),
+/// and `Err` only for infrastructure failures such as a failed database query.
 pub trait TenantResolver: Send + Sync + 'static {
+    /// The application-specific tenant type produced by this resolver.
     type Tenant: Clone + Send + Sync + HasTenantId + serde::Serialize + 'static;
 
+    /// Attempt to resolve a tenant from the given request parts.
+    ///
+    /// Returns `Ok(Some(tenant))` when a tenant is found, `Ok(None)` when no
+    /// tenant matches, and `Err` for resolution failures (e.g., a database
+    /// error).
     fn resolve(
         &self,
         parts: &Parts,
@@ -35,7 +50,12 @@ impl<R: TenantResolver> TenantResolverDyn<R::Tenant> for R {
     }
 }
 
-/// Type-erased wrapper stored in the service registry.
+/// Type-erased, cheaply cloneable wrapper around a [`TenantResolver`].
+///
+/// Register one instance per tenant type with `AppState`'s service registry.
+/// The [`Tenant`](crate::Tenant) and [`OptionalTenant`](crate::OptionalTenant)
+/// extractors and `TenantContextLayer` (feature `"templates"`) all retrieve
+/// this service at request time.
 pub struct TenantResolverService<T: Clone + Send + Sync + 'static> {
     inner: Arc<dyn TenantResolverDyn<T>>,
 }
@@ -55,12 +75,14 @@ impl<T: Clone + Send + Sync + 'static> std::fmt::Debug for TenantResolverService
 }
 
 impl<T: Clone + Send + Sync + 'static> TenantResolverService<T> {
+    /// Wraps `resolver` in a type-erased service ready for registration.
     pub fn new<R: TenantResolver<Tenant = T>>(resolver: R) -> Self {
         Self {
             inner: Arc::new(resolver),
         }
     }
 
+    /// Delegates to the underlying resolver and returns the resolved tenant.
     pub async fn resolve(&self, parts: &Parts) -> Result<Option<T>, modo::Error> {
         self.inner.resolve(parts).await
     }

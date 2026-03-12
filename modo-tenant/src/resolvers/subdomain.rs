@@ -3,6 +3,12 @@ use modo::axum::http::request::Parts;
 use std::future::Future;
 use std::marker::PhantomData;
 
+/// Resolves a tenant from the subdomain of the `Host` header.
+///
+/// Given `base_domain = "myapp.com"`, a request for `acme.myapp.com` extracts
+/// `"acme"` and forwards it to the `lookup` closure. The bare domain and the
+/// `www` subdomain are never forwarded — both return `Ok(None)`. Port suffixes
+/// in the `Host` header are stripped before matching.
 pub struct SubdomainResolver<T, F> {
     dot_base_domain: String,
     lookup: F,
@@ -15,6 +21,8 @@ where
     F: Fn(String) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Option<T>, modo::Error>> + Send,
 {
+    /// Creates a new `SubdomainResolver` that strips `base_domain` and calls
+    /// `lookup` with the remaining subdomain label(s).
     pub fn new(base_domain: impl Into<String>, lookup: F) -> Self {
         Self {
             dot_base_domain: format!(".{}", base_domain.into()),
