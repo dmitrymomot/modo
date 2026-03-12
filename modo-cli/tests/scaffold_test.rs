@@ -6,17 +6,29 @@ fn modo_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_modo"))
 }
 
-/// Creates a temp parent directory and returns (parent_dir, project_dir).
-/// The CLI will be invoked with the project name as a simple string,
-/// running from within parent_dir so it creates the project there.
-fn temp_project(name: &str) -> (PathBuf, PathBuf) {
-    let parent = std::env::temp_dir().join(format!("modo-test-{}-{}", name, std::process::id()));
-    if parent.exists() {
-        fs::remove_dir_all(&parent).unwrap();
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> (Self, PathBuf) {
+        let parent =
+            std::env::temp_dir().join(format!("modo-test-{}-{}", name, std::process::id()));
+        if parent.exists() {
+            fs::remove_dir_all(&parent).unwrap();
+        }
+        fs::create_dir_all(&parent).unwrap();
+        let project = parent.join(name);
+        (Self(parent), project)
     }
-    fs::create_dir_all(&parent).unwrap();
-    let project = parent.join(name);
-    (parent, project)
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }
 
 fn run_new(parent: &std::path::Path, name: &str, args: &[&str]) -> std::process::Output {
@@ -31,8 +43,8 @@ fn run_new(parent: &std::path::Path, name: &str, args: &[&str]) -> std::process:
 
 #[test]
 fn scaffold_minimal() {
-    let (parent, dir) = temp_project("myapp");
-    let output = run_new(&parent, "myapp", &["-t", "minimal"]);
+    let (tmp, dir) = TempDir::new("myapp");
+    let output = run_new(tmp.path(), "myapp", &["-t", "minimal"]);
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -58,14 +70,12 @@ fn scaffold_minimal() {
     assert!(!cargo.contains("{{"));
     assert!(!cargo.contains("modo-db"));
     assert!(cargo.contains("name = \"myapp\""));
-
-    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_api_sqlite() {
-    let (parent, dir) = temp_project("apiapp");
-    let output = run_new(&parent, "apiapp", &["-t", "api"]);
+    let (tmp, dir) = TempDir::new("apiapp");
+    let output = run_new(tmp.path(), "apiapp", &["-t", "api"]);
     assert!(output.status.success());
 
     assert!(dir.join("src/handlers/mod.rs").exists());
@@ -75,13 +85,18 @@ fn scaffold_api_sqlite() {
     let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
     assert!(cargo.contains("sqlite"));
 
-    fs::remove_dir_all(&parent).unwrap();
+    // API template should NOT have jobs_database (no jobs support)
+    let config_rs = fs::read_to_string(dir.join("src/config.rs")).unwrap();
+    assert!(
+        !config_rs.contains("jobs_database"),
+        "api config.rs should NOT have jobs_database field"
+    );
 }
 
 #[test]
 fn scaffold_api_postgres() {
-    let (parent, dir) = temp_project("pgapp");
-    let output = run_new(&parent, "pgapp", &["-t", "api", "--postgres"]);
+    let (tmp, dir) = TempDir::new("pgapp");
+    let output = run_new(tmp.path(), "pgapp", &["-t", "api", "--postgres"]);
     assert!(output.status.success());
 
     assert!(dir.join("docker-compose.yaml").exists());
@@ -91,14 +106,12 @@ fn scaffold_api_postgres() {
 
     let dc = fs::read_to_string(dir.join("docker-compose.yaml")).unwrap();
     assert!(dc.contains("postgres:18-alpine"));
-
-    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_web() {
-    let (parent, dir) = temp_project("webapp");
-    let output = run_new(&parent, "webapp", &["-t", "web"]);
+    let (tmp, dir) = TempDir::new("webapp");
+    let output = run_new(tmp.path(), "webapp", &["-t", "web"]);
     assert!(output.status.success());
 
     // All directories present
@@ -124,17 +137,35 @@ fn scaffold_web() {
     assert!(dev_cfg.contains("templates_path: templates/emails"));
     assert!(dev_cfg.contains("path: locales"));
     assert!(dev_cfg.contains("backend: local"));
+    // SQLite web template should have jobs_database section
+    assert!(
+        dev_cfg.contains("jobs_database:"),
+        "web dev config should have jobs_database section"
+    );
+    assert!(dev_cfg.contains("data/jobs.db"));
+
+    // Config should have jobs_database field
+    let config_rs = fs::read_to_string(dir.join("src/config.rs")).unwrap();
+    assert!(
+        config_rs.contains("jobs_database"),
+        "web config.rs should have jobs_database field"
+    );
+
+    // main.rs should have dual-DB logic
+    let main_rs = fs::read_to_string(dir.join("src/main.rs")).unwrap();
+    assert!(
+        main_rs.contains("sync_and_migrate_group"),
+        "web main.rs should use sync_and_migrate_group"
+    );
 
     let prod_cfg = fs::read_to_string(dir.join("config/production.yaml")).unwrap();
     assert!(prod_cfg.contains("backend: s3"));
-
-    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_worker() {
-    let (parent, dir) = temp_project("workerapp");
-    let output = run_new(&parent, "workerapp", &["-t", "worker"]);
+    let (tmp, dir) = TempDir::new("workerapp");
+    let output = run_new(tmp.path(), "workerapp", &["-t", "worker"]);
     assert!(output.status.success());
 
     assert!(dir.join("src/tasks/mod.rs").exists());
@@ -142,56 +173,74 @@ fn scaffold_worker() {
     assert!(!dir.join("src/views").exists());
 
     let main_rs = fs::read_to_string(dir.join("src/main.rs")).unwrap();
-    assert!(main_rs.contains("modo_jobs::start"));
-    assert!(main_rs.contains("/health"));
+    assert!(main_rs.contains("modo_jobs::new"));
+    assert!(
+        main_rs.contains("sync_and_migrate_group"),
+        "worker main.rs should use sync_and_migrate_group"
+    );
 
-    fs::remove_dir_all(&parent).unwrap();
+    // Worker config should have jobs_database field
+    let config_rs = fs::read_to_string(dir.join("src/config.rs")).unwrap();
+    assert!(
+        config_rs.contains("jobs_database"),
+        "worker config.rs should have jobs_database field"
+    );
+
+    // Worker dev config should have jobs_database section (SQLite default)
+    let dev_cfg = fs::read_to_string(dir.join("config/development.yaml")).unwrap();
+    assert!(
+        dev_cfg.contains("jobs_database:"),
+        "worker dev config should have jobs_database section"
+    );
 }
 
 #[test]
 fn error_existing_directory() {
-    let (parent, dir) = temp_project("existsapp");
+    let (tmp, dir) = TempDir::new("existsapp");
     fs::create_dir_all(&dir).unwrap();
 
-    let output = run_new(&parent, "existsapp", &["-t", "minimal"]);
+    let output = run_new(tmp.path(), "existsapp", &["-t", "minimal"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("already exists"));
-
-    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn error_db_flag_with_minimal() {
-    let (parent, dir) = temp_project("minpg");
-    let output = run_new(&parent, "minpg", &["-t", "minimal", "--postgres"]);
+    let (tmp, dir) = TempDir::new("minpg");
+    let output = run_new(tmp.path(), "minpg", &["-t", "minimal", "--postgres"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("does not use a database"));
 
     // Directory should NOT have been created
     assert!(!dir.exists());
-
-    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn error_conflicting_db_flags() {
-    let (parent, _dir) = temp_project("conflict");
+    let (tmp, _dir) = TempDir::new("conflict");
     let output = run_new(
-        &parent,
+        tmp.path(),
         "conflict",
         &["-t", "api", "--postgres", "--sqlite"],
     );
     assert!(!output.status.success());
+}
 
-    fs::remove_dir_all(&parent).unwrap();
+#[test]
+fn error_invalid_project_name() {
+    let (tmp, _dir) = TempDir::new("badname");
+    let output = run_new(tmp.path(), "123bad", &["-t", "minimal"]);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("must start with"));
 }
 
 #[test]
 fn no_unrendered_placeholders() {
-    let (parent, dir) = temp_project("checkapp");
-    let output = run_new(&parent, "checkapp", &["-t", "web"]);
+    let (tmp, dir) = TempDir::new("checkapp");
+    let output = run_new(tmp.path(), "checkapp", &["-t", "web"]);
     assert!(output.status.success());
 
     // Walk all files and check for unrendered {{ }} (but skip raw Jinja in HTML templates)
@@ -221,6 +270,4 @@ fn no_unrendered_placeholders() {
         }
     }
     check_dir(&dir);
-
-    fs::remove_dir_all(&parent).unwrap();
 }
