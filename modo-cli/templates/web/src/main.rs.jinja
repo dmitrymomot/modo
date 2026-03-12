@@ -1,0 +1,44 @@
+mod config;
+mod handlers;
+mod models;
+mod tasks;
+mod types;
+mod views;
+
+use modo::app::ServiceRegistry;
+
+#[modo::handler(GET, "/health")]
+async fn health() -> &'static str {
+    "ok"
+}
+
+#[modo::main]
+async fn main(
+    app: modo::app::AppBuilder,
+    config: config::Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let db = modo_db::connect(&config.database).await?;
+    modo_db::sync_and_migrate(&db).await?;
+
+    let session_store = modo_session::SessionStore::new(
+        &db,
+        modo_session::SessionConfig::default(),
+        config.core.cookies.clone(),
+    );
+
+    let services = ServiceRegistry::new().with(db.clone());
+    let jobs = modo_jobs::start(&db, &config.jobs, services).await?;
+
+    let storage = modo_upload::storage(&config.upload)?;
+    let email = modo_email::mailer(&config.email)?;
+
+    app.config(config.core)
+        .managed_service(db)
+        .managed_service(jobs)
+        .service(session_store.clone())
+        .service(storage)
+        .service(email)
+        .layer(modo_session::layer(session_store))
+        .run()
+        .await
+}
