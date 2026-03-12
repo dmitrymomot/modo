@@ -1,0 +1,70 @@
+# Run dev server with auto-reload
+{% if db_driver == "postgres" %}
+dev: docker-up css
+	cargo watch -x run
+{% else %}
+dev: css
+	cargo watch -x run
+{% endif %}
+
+# Release build
+build:
+	cargo build --release
+
+# Format code
+fmt:
+	cargo fmt
+
+# Run clippy
+lint:
+	cargo clippy -- -D warnings
+
+# Run tests
+test:
+	cargo test
+
+# Format check + lint + test
+check:
+	cargo fmt -- --check
+	cargo clippy -- -D warnings
+	cargo test
+
+# Build Tailwind CSS
+css:
+	./tailwindcss -i assets/src/app.css -o assets/static/css/app.css --minify
+
+# Download Tailwind CSS standalone CLI
+tailwind-download:
+	#\!/usr/bin/env bash
+	set -euo pipefail
+	PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
+	ARCH=$(uname -m)
+	if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
+		ARCH="arm64"
+	else
+		ARCH="x64"
+	fi
+	URL="https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-${PLATFORM}-${ARCH}"
+	curl -sLo tailwindcss "$URL"
+	chmod +x tailwindcss
+	echo "Tailwind CSS CLI downloaded successfully."
+
+# Download frontend JS dependencies
+assets-download:
+	#\!/usr/bin/env bash
+	set -euo pipefail
+	mkdir -p assets/static/js
+	curl -sLo assets/static/js/htmx.min.js "https://unpkg.com/htmx.org/dist/htmx.min.js"
+	curl -sLo assets/static/js/htmx-sse.js "https://unpkg.com/htmx-ext-sse/sse.js"
+	curl -sLo assets/static/js/alpine.min.js "https://unpkg.com/alpinejs/dist/cdn.min.js"
+	echo "Assets downloaded successfully."
+{% if db_driver == "postgres" %}
+
+# Start Postgres container
+docker-up:
+	docker compose up -d
+
+# Stop Postgres container
+docker-down:
+	docker compose down
+{% endif %}
