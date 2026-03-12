@@ -19,17 +19,6 @@ In-memory and optional Redis support for performance-critical paths.
 
 ## Tier 2 — Strong Value-Add
 
-### `modo-sse` — Server-Sent Events
-
-Real-time server-to-client streaming. Simpler than WebSockets, works with HTMX.
-
-- `SseStream` response type for handlers
-- Named events, retry intervals, last-event-id
-- Channel-based broadcasting (one-to-many)
-- Integration with HTMX `hx-ext="sse"`
-- Automatic client reconnection support
-- Use cases: job progress, live notifications, dashboard updates
-
 ### OAuth2 Provider — in `modo-auth`
 
 Social login and external identity providers. Table stakes for consumer-facing SaaS.
