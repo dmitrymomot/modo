@@ -69,16 +69,22 @@ jobs:
 
             # Wait for crates.io index to reflect the new version before publishing dependents.
             echo "Waiting for $name $new_version to appear in crates.io index..."
+            indexed_ok=false
             for i in $(seq 1 12); do
               sleep 10
               indexed=$(cargo search "$name" --limit 1 2>/dev/null \
                 | grep "^${name} " | sed 's/.*= "\(.*\)".*/\1/') || indexed=""
               if [ "$indexed" = "$new_version" ]; then
                 echo "$name $new_version is indexed."
+                indexed_ok=true
                 break
               fi
               echo "Attempt $i/12: index shows '${indexed:-<none>}', waiting..."
             done
+            if [ "$indexed_ok" = false ]; then
+              echo "::error::$name $new_version not indexed after 120s — aborting to prevent dependent publish failures"
+              exit 1
+            fi
           done
 
           echo "Done. Published $published crate(s)."
