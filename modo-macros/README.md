@@ -9,8 +9,8 @@ All macros are re-exported from `modo` — import them as `modo::handler`,
 
 ## Features
 
-| Feature | What it enables |
-|---|---|
+| Feature        | What it enables                                                         |
+| -------------- | ----------------------------------------------------------------------- |
 | `static-embed` | `#[main(static_assets = "...")]` static file embedding via `rust-embed` |
 
 Template and i18n macros (`#[view]`, `#[template_function]`, `#[template_filter]`, `t!`)
@@ -195,15 +195,15 @@ let items = modo::t!(i18n, "cart.items", count = cart_count);
 
 ## Key Macros
 
-| Macro | Kind | Purpose |
-|---|---|---|
-| `#[handler]` | attribute | Register an async fn as an HTTP route |
-| `#[main]` | attribute | Application entry point and runtime bootstrap |
-| `#[module]` | attribute | Group routes under a shared prefix |
-| `#[error_handler]` | attribute | Register a custom error handler |
-| `#[Sanitize]` | derive | Generate `Sanitize::sanitize` from `#[clean]` fields |
-| `#[Validate]` | derive | Generate `Validate::validate` from `#[validate]` fields |
-| `t!` | function-like | Localisation key lookup with variable substitution |
-| `#[view]` | attribute | Link a struct to a MiniJinja template |
-| `#[template_function]` | attribute | Register a MiniJinja global function |
-| `#[template_filter]` | attribute | Register a MiniJinja filter |
+| Macro                  | Kind          | Purpose                                                 |
+| ---------------------- | ------------- | ------------------------------------------------------- |
+| `#[handler]`           | attribute     | Register an async fn as an HTTP route                   |
+| `#[main]`              | attribute     | Application entry point and runtime bootstrap           |
+| `#[module]`            | attribute     | Group routes under a shared prefix                      |
+| `#[error_handler]`     | attribute     | Register a custom error handler                         |
+| `#[Sanitize]`          | derive        | Generate `Sanitize::sanitize` from `#[clean]` fields    |
+| `#[Validate]`          | derive        | Generate `Validate::validate` from `#[validate]` fields |
+| `t!`                   | function-like | Localisation key lookup with variable substitution      |
+| `#[view]`              | attribute     | Link a struct to a MiniJinja template                   |
+| `#[template_function]` | attribute     | Register a MiniJinja global function                    |
+| `#[template_filter]`   | attribute     | Register a MiniJinja filter                             |
