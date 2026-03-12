@@ -2,15 +2,7 @@ mod config;
 mod handlers;
 mod models;
 mod tasks;
-mod types;
 mod views;
-
-use modo::app::ServiceRegistry;
-
-#[modo::handler(GET, "/health")]
-async fn health() -> &'static str {
-    "ok"
-}
 
 #[modo::main]
 async fn main(
@@ -18,7 +10,16 @@ async fn main(
     config: config::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = modo_db::connect(&config.database).await?;
+{%- if db_driver == "sqlite" %}
+
+    let jobs_db = modo_db::connect(&config.jobs_database).await?;
+    modo_db::sync_and_migrate_group(&jobs_db, "jobs").await?;
     modo_db::sync_and_migrate(&db).await?;
+{%- else %}
+
+    modo_db::sync_and_migrate(&db).await?;
+    let jobs_db = db.clone();
+{%- endif %}
 
     let session_store = modo_session::SessionStore::new(
         &db,
@@ -26,8 +27,10 @@ async fn main(
         config.core.cookies.clone(),
     );
 
-    let services = ServiceRegistry::new().with(db.clone());
-    let jobs = modo_jobs::start(&db, &config.jobs, services).await?;
+    let jobs = modo_jobs::new(&jobs_db, &config.jobs)
+        .service(db.clone())
+        .run()
+        .await?;
 
     let storage = modo_upload::storage(&config.upload)?;
     let email = modo_email::mailer(&config.email)?;
