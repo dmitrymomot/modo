@@ -28,7 +28,10 @@ fn write_dir(
     prefix: &Path,
 ) -> Result<()> {
     for file in dir.files() {
-        let file_name = file.path().file_name().expect("include_dir path missing file_name");
+        let file_name = file
+            .path()
+            .file_name()
+            .expect("include_dir path missing file_name");
         let relative = prefix.join(file_name);
         let relative_str = relative.to_string_lossy();
 
@@ -64,13 +67,15 @@ fn write_dir(
             fs::create_dir_all(parent)
                 .with_context(|| format!("create dir: {}", parent.display()))?;
         }
-        fs::write(&dest, rendered)
-            .with_context(|| format!("write file: {}", dest.display()))?;
+        fs::write(&dest, rendered).with_context(|| format!("write file: {}", dest.display()))?;
     }
 
     // Recurse into subdirectories with updated prefix
     for subdir in dir.dirs() {
-        let dir_name = subdir.path().file_name().expect("include_dir path missing file_name");
+        let dir_name = subdir
+            .path()
+            .file_name()
+            .expect("include_dir path missing file_name");
         let sub_prefix = prefix.join(dir_name);
         write_dir(env, subdir, target_dir, context, &sub_prefix)?;
     }

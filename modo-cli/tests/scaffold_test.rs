@@ -178,7 +178,11 @@ fn error_db_flag_with_minimal() {
 #[test]
 fn error_conflicting_db_flags() {
     let (parent, _dir) = temp_project("conflict");
-    let output = run_new(&parent, "conflict", &["-t", "api", "--postgres", "--sqlite"]);
+    let output = run_new(
+        &parent,
+        "conflict",
+        &["-t", "api", "--postgres", "--sqlite"],
+    );
     assert!(!output.status.success());
 
     fs::remove_dir_all(&parent).unwrap();
@@ -202,7 +206,7 @@ fn no_unrendered_placeholders() {
                 continue;
             }
             // Skip HTML files (they contain MiniJinja syntax for the app)
-            if path.extension().map_or(false, |e| e == "html") {
+            if path.extension() == Some(std::ffi::OsStr::new("html")) {
                 continue;
             }
             let content = fs::read_to_string(&path).unwrap_or_default();
