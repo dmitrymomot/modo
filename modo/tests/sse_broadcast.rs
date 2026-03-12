@@ -51,10 +51,7 @@ async fn broadcast_subscriber_count() {
     assert_eq!(mgr.subscriber_count(&"k".into()), 2);
 
     drop(_s1);
-    // After drop, count may still be 2 until next operation triggers cleanup.
-    // Force cleanup by subscribing or sending.
-    let _ = mgr.send(&"k".into(), 0);
-    // tokio broadcast receiver_count decrements on drop
+    // receiver_count decrements immediately on drop; channel stays because _s2 is alive
     assert_eq!(mgr.subscriber_count(&"k".into()), 1);
 }
 
