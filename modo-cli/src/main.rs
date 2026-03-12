@@ -56,6 +56,42 @@ impl Template {
     }
 }
 
+const RUST_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", "yield",
+];
+
+fn validate_project_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("project name cannot be empty");
+    }
+    let first = name.as_bytes()[0];
+    if !(first.is_ascii_alphabetic() || first == b'_') {
+        anyhow::bail!(
+            "project name must start with an ASCII letter or underscore, got '{}'",
+            name
+        );
+    }
+    if let Some(bad) = name
+        .chars()
+        .find(|c| !matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-'))
+    {
+        anyhow::bail!(
+            "project name contains invalid character '{}' (only [a-zA-Z0-9_-] allowed)",
+            bad
+        );
+    }
+    if RUST_KEYWORDS.contains(&name) {
+        anyhow::bail!(
+            "'{}' is a Rust keyword and cannot be used as a project name",
+            name
+        );
+    }
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -66,6 +102,8 @@ fn main() -> anyhow::Result<()> {
             postgres,
             sqlite,
         } => {
+            validate_project_name(&name)?;
+
             if (postgres || sqlite) && !template.uses_db() {
                 anyhow::bail!(
                     "minimal template does not use a database. Remove --postgres/--sqlite flags."
@@ -77,16 +115,23 @@ fn main() -> anyhow::Result<()> {
                 anyhow::bail!("directory '{}' already exists", name);
             }
 
-            let db_driver = if postgres { "postgres" } else { "sqlite" };
+            let db_driver = if !template.uses_db() {
+                ""
+            } else if postgres {
+                "postgres"
+            } else {
+                "sqlite"
+            };
             let template_name = template.to_string();
 
             let template_dir = templates::get(&template_name)
                 .ok_or_else(|| anyhow::anyhow!("unknown template: {}", template_name))?;
             let shared_dir = templates::shared();
 
-            let mut context = std::collections::HashMap::new();
-            context.insert("project_name", name.as_str());
-            context.insert("db_driver", db_driver);
+            let context = scaffold::ScaffoldContext {
+                project_name: &name,
+                db_driver,
+            };
 
             std::fs::create_dir_all(target)?;
             if let Err(e) = scaffold::scaffold(target, template_dir, shared_dir, &context) {
@@ -111,7 +156,6 @@ fn main() -> anyhow::Result<()> {
             println!("Next steps:");
             println!("  cd {}", name);
             if matches!(template, Template::Web) {
-                println!("  just tailwind-download   # download Tailwind CSS CLI");
                 println!("  just assets-download     # download HTMX, Alpine.js");
                 println!("  just css                 # build CSS");
             }
@@ -125,7 +169,6 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
 
     #[test]
     fn parse_new_with_all_args() {
@@ -173,5 +216,25 @@ mod tests {
     fn conflicting_db_flags_rejected() {
         let result = Cli::try_parse_from(["modo", "new", "myapp", "--postgres", "--sqlite"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn valid_project_names() {
+        assert!(validate_project_name("myapp").is_ok());
+        assert!(validate_project_name("my_app").is_ok());
+        assert!(validate_project_name("my-app").is_ok());
+        assert!(validate_project_name("_private").is_ok());
+        assert!(validate_project_name("App123").is_ok());
+    }
+
+    #[test]
+    fn invalid_project_names() {
+        assert!(validate_project_name("").is_err());
+        assert!(validate_project_name("123abc").is_err());
+        assert!(validate_project_name("-dash").is_err());
+        assert!(validate_project_name("has space").is_err());
+        assert!(validate_project_name("a/b").is_err());
+        assert!(validate_project_name("fn").is_err());
+        assert!(validate_project_name("struct").is_err());
     }
 }

@@ -1,15 +1,19 @@
 use anyhow::{Context, Result};
 use include_dir::Dir;
 use minijinja::Environment;
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+pub struct ScaffoldContext<'a> {
+    pub project_name: &'a str,
+    pub db_driver: &'a str,
+}
 
 pub fn scaffold(
     target_dir: &Path,
     template_dir: &Dir<'static>,
     shared_dir: &Dir<'static>,
-    context: &HashMap<&str, &str>,
+    context: &ScaffoldContext<'_>,
 ) -> Result<()> {
     let env = Environment::new();
 
@@ -24,7 +28,7 @@ fn write_dir(
     env: &Environment,
     dir: &Dir<'static>,
     target_dir: &Path,
-    context: &HashMap<&str, &str>,
+    context: &ScaffoldContext<'_>,
     prefix: &Path,
 ) -> Result<()> {
     for file in dir.files() {
@@ -33,34 +37,36 @@ fn write_dir(
             .file_name()
             .expect("include_dir path missing file_name");
         let relative = prefix.join(file_name);
-        let relative_str = relative.to_string_lossy();
+        let is_jinja = relative.extension().is_some_and(|ext| ext == "jinja");
 
         let content = file
             .contents_utf8()
-            .with_context(|| format!("non-UTF8 template: {relative_str}"))?;
+            .with_context(|| format!("non-UTF8 template: {}", relative.display()))?;
 
         // Render through MiniJinja
         let rendered = env
             .render_str(
                 content,
                 minijinja::context! {
-                    project_name => context["project_name"],
-                    db_driver => context["db_driver"],
+                    project_name => context.project_name,
+                    db_driver => context.db_driver,
                 },
             )
-            .with_context(|| format!("render failed: {relative_str}"))?;
+            .with_context(|| format!("render failed: {}", relative.display()))?;
 
         // Skip files that render to empty (conditional files like docker-compose for sqlite)
-        // but only for .jinja files (don't skip intentionally empty files like .gitkeep)
-        if relative_str.ends_with(".jinja") && rendered.trim().is_empty() {
+        // but only when the source contains conditionals — unconditionally empty files
+        // (like mod.rs stubs) should still be written out.
+        if is_jinja && rendered.trim().is_empty() && content.contains("{% if") {
             continue;
         }
 
         // Strip .jinja extension
-        let out_path = relative_str
-            .strip_suffix(".jinja")
-            .unwrap_or(&relative_str)
-            .to_string();
+        let out_path = if is_jinja {
+            relative.with_extension("")
+        } else {
+            relative.clone()
+        };
 
         let dest = target_dir.join(&out_path);
         if let Some(parent) = dest.parent() {
