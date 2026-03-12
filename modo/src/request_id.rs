@@ -10,14 +10,20 @@ use std::fmt;
 
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
 
+/// A per-request ULID identifier injected by the request ID middleware.
+///
+/// Propagated via the `X-Request-ID` request and response headers.
+/// Extract in handlers to correlate logs with client requests.
 #[derive(Debug, Clone)]
 pub struct RequestId(pub String);
 
 impl RequestId {
+    /// Generate a new ULID-based request ID (lowercase).
     pub fn generate() -> Self {
         Self(ulid::Ulid::new().to_string().to_lowercase())
     }
 
+    /// Return the ID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }

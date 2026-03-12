@@ -5,7 +5,9 @@ pub trait Sanitize {
     fn sanitize(&mut self);
 }
 
-/// Registration entry for an auto-sanitizer, collected via `inventory`.
+/// `inventory` registration entry for an auto-sanitizer, created by `#[derive(Sanitize)]`.
+///
+/// Collected at startup and applied automatically by extractors (`Form`, `Json`).
 pub struct SanitizerRegistration {
     pub type_id: TypeId,
     pub sanitize: fn(&mut dyn Any),
