@@ -1,0 +1,76 @@
+name: Publish Crates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/Cargo.toml'
+      - '!examples/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Publish changed crates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Publish crates with version changes
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -e
+
+          # Publishable crates in dependency order.
+          # Format: "directory:package-name"
+          CRATES=(
+            "modo-macros:modo-macros"
+            "modo-db-macros:modo-db-macros"
+            "modo-jobs-macros:modo-jobs-macros"
+            "modo-upload-macros:modo-upload-macros"
+            "modo:modo"
+            "modo-db:modo-db"
+            "modo-email:modo-email"
+            "modo-tenant:modo-tenant"
+            "modo-upload:modo-upload"
+            "modo-jobs:modo-jobs"
+            "modo-session:modo-session"
+            "modo-auth:modo-auth"
+          )
+
+          published=0
+
+          for entry in "${CRATES[@]}"; do
+            dir="${entry%%:*}"
+            name="${entry##*:}"
+            toml="$dir/Cargo.toml"
+
+            # Get previous version (treat missing file as "new crate").
+            old_version=$(git show HEAD~1:"$toml" 2>/dev/null \
+              | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/') || old_version=""
+
+            new_version=$(grep '^version' "$toml" | head -1 | sed 's/.*"\(.*\)"/\1/')
+
+            if [ "$old_version" = "$new_version" ]; then
+              echo "::debug::$name $new_version unchanged — skipping"
+              continue
+            fi
+
+            echo "Publishing $name $new_version (was ${old_version:-<new>})..."
+            cargo publish -p "$name" --no-verify
+            published=$((published + 1))
+
+            # Allow crates.io index to propagate before publishing dependents.
+            echo "Waiting 30s for index propagation..."
+            sleep 30
+          done
+
+          echo "Done. Published $published crate(s)."
