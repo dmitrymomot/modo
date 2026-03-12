@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
+mod scaffold;
+mod templates;
+
 #[derive(Parser)]
 #[command(name = "modo", version, about = "modo framework CLI")]
 struct Cli {
