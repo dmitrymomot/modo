@@ -6,22 +6,38 @@ fn modo_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_modo"))
 }
 
-fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("modo-test-{}-{}", name, std::process::id()));
-    if dir.exists() {
-        fs::remove_dir_all(&dir).unwrap();
+/// Creates a temp parent directory and returns (parent_dir, project_dir).
+/// The CLI will be invoked with the project name as a simple string,
+/// running from within parent_dir so it creates the project there.
+fn temp_project(name: &str) -> (PathBuf, PathBuf) {
+    let parent = std::env::temp_dir().join(format!("modo-test-{}-{}", name, std::process::id()));
+    if parent.exists() {
+        fs::remove_dir_all(&parent).unwrap();
     }
-    dir
+    fs::create_dir_all(&parent).unwrap();
+    let project = parent.join(name);
+    (parent, project)
+}
+
+fn run_new(parent: &std::path::Path, name: &str, args: &[&str]) -> std::process::Output {
+    modo_bin()
+        .current_dir(parent)
+        .arg("new")
+        .arg(name)
+        .args(args)
+        .output()
+        .unwrap()
 }
 
 #[test]
 fn scaffold_minimal() {
-    let dir = temp_dir("minimal");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "minimal"])
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let (parent, dir) = temp_project("myapp");
+    let output = run_new(&parent, "myapp", &["-t", "minimal"]);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     assert!(dir.join("Cargo.toml").exists());
     assert!(dir.join("src/main.rs").exists());
@@ -41,17 +57,15 @@ fn scaffold_minimal() {
     let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
     assert!(!cargo.contains("{{"));
     assert!(!cargo.contains("modo-db"));
+    assert!(cargo.contains("name = \"myapp\""));
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_api_sqlite() {
-    let dir = temp_dir("api-sqlite");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "api"])
-        .output()
-        .unwrap();
+    let (parent, dir) = temp_project("apiapp");
+    let output = run_new(&parent, "apiapp", &["-t", "api"]);
     assert!(output.status.success());
 
     assert!(dir.join("src/handlers/mod.rs").exists());
@@ -61,16 +75,13 @@ fn scaffold_api_sqlite() {
     let cargo = fs::read_to_string(dir.join("Cargo.toml")).unwrap();
     assert!(cargo.contains("sqlite"));
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_api_postgres() {
-    let dir = temp_dir("api-pg");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "api", "--postgres"])
-        .output()
-        .unwrap();
+    let (parent, dir) = temp_project("pgapp");
+    let output = run_new(&parent, "pgapp", &["-t", "api", "--postgres"]);
     assert!(output.status.success());
 
     assert!(dir.join("docker-compose.yaml").exists());
@@ -81,16 +92,13 @@ fn scaffold_api_postgres() {
     let dc = fs::read_to_string(dir.join("docker-compose.yaml")).unwrap();
     assert!(dc.contains("postgres:18-alpine"));
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_web() {
-    let dir = temp_dir("web");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "web"])
-        .output()
-        .unwrap();
+    let (parent, dir) = temp_project("webapp");
+    let output = run_new(&parent, "webapp", &["-t", "web"]);
     assert!(output.status.success());
 
     // All directories present
@@ -120,16 +128,13 @@ fn scaffold_web() {
     let prod_cfg = fs::read_to_string(dir.join("config/production.yaml")).unwrap();
     assert!(prod_cfg.contains("backend: s3"));
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn scaffold_worker() {
-    let dir = temp_dir("worker");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "worker"])
-        .output()
-        .unwrap();
+    let (parent, dir) = temp_project("workerapp");
+    let output = run_new(&parent, "workerapp", &["-t", "worker"]);
     assert!(output.status.success());
 
     assert!(dir.join("src/tasks/mod.rs").exists());
@@ -140,57 +145,49 @@ fn scaffold_worker() {
     assert!(main_rs.contains("modo_jobs::start"));
     assert!(main_rs.contains("/health"));
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn error_existing_directory() {
-    let dir = temp_dir("exists");
+    let (parent, dir) = temp_project("existsapp");
     fs::create_dir_all(&dir).unwrap();
 
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "minimal"])
-        .output()
-        .unwrap();
+    let output = run_new(&parent, "existsapp", &["-t", "minimal"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("already exists"));
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn error_db_flag_with_minimal() {
-    let dir = temp_dir("minimal-pg");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "minimal", "--postgres"])
-        .output()
-        .unwrap();
+    let (parent, dir) = temp_project("minpg");
+    let output = run_new(&parent, "minpg", &["-t", "minimal", "--postgres"]);
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("does not use a database"));
 
     // Directory should NOT have been created
     assert!(!dir.exists());
+
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn error_conflicting_db_flags() {
-    let dir = temp_dir("conflict");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "api", "--postgres", "--sqlite"])
-        .output()
-        .unwrap();
+    let (parent, _dir) = temp_project("conflict");
+    let output = run_new(&parent, "conflict", &["-t", "api", "--postgres", "--sqlite"]);
     assert!(!output.status.success());
+
+    fs::remove_dir_all(&parent).unwrap();
 }
 
 #[test]
 fn no_unrendered_placeholders() {
-    let dir = temp_dir("placeholders");
-    let output = modo_bin()
-        .args(["new", dir.to_str().unwrap(), "-t", "web"])
-        .output()
-        .unwrap();
+    let (parent, dir) = temp_project("checkapp");
+    let output = run_new(&parent, "checkapp", &["-t", "web"]);
     assert!(output.status.success());
 
     // Walk all files and check for unrendered {{ }} (but skip raw Jinja in HTML templates)
@@ -211,7 +208,9 @@ fn no_unrendered_placeholders() {
             let content = fs::read_to_string(&path).unwrap_or_default();
             // Check for any unrendered MiniJinja placeholder
             assert!(
-                !content.contains("{{ ") && !content.contains("{{project") && !content.contains("{{db"),
+                !content.contains("{{ ")
+                    && !content.contains("{{project")
+                    && !content.contains("{{db"),
                 "unrendered placeholder in {}",
                 path.display()
             );
@@ -219,5 +218,5 @@ fn no_unrendered_placeholders() {
     }
     check_dir(&dir);
 
-    fs::remove_dir_all(&dir).unwrap();
+    fs::remove_dir_all(&parent).unwrap();
 }

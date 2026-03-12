@@ -89,7 +89,10 @@ fn main() -> anyhow::Result<()> {
             context.insert("db_driver", db_driver);
 
             std::fs::create_dir_all(target)?;
-            scaffold::scaffold(target, template_dir, shared_dir, &context)?;
+            if let Err(e) = scaffold::scaffold(target, template_dir, shared_dir, &context) {
+                let _ = std::fs::remove_dir_all(target);
+                return Err(e);
+            }
 
             // git init
             let status = std::process::Command::new("git")
