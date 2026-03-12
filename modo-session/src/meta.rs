@@ -7,14 +7,23 @@ use std::net::IpAddr;
 /// Built by the middleware from request headers.
 #[derive(Debug, Clone)]
 pub struct SessionMeta {
+    /// Client IP address (respects trusted-proxy configuration).
     pub ip_address: String,
+    /// Raw `User-Agent` header value.
     pub user_agent: String,
+    /// Human-readable device name (e.g. `"Chrome on macOS"`).
     pub device_name: String,
+    /// Device category: `"desktop"`, `"mobile"`, or `"tablet"`.
     pub device_type: String,
+    /// SHA-256 fingerprint used for hijack detection.
     pub fingerprint: String,
 }
 
 impl SessionMeta {
+    /// Build `SessionMeta` from individual header values.
+    ///
+    /// `ip_address` should already be the resolved client IP (use
+    /// [`extract_client_ip`] to obtain it from raw headers).
     pub fn from_headers(
         ip_address: String,
         user_agent: &str,
@@ -31,6 +40,8 @@ impl SessionMeta {
     }
 }
 
+/// Return the value of a named header as a `&str`, or `""` if absent or
+/// non-ASCII.
 pub fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {
     headers
         .get(name)

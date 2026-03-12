@@ -3,7 +3,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-/// How CORS origins are resolved.
+/// Specifies which origins are allowed for cross-origin requests.
 pub enum CorsOrigins {
     /// Allow any origin (`Access-Control-Allow-Origin: *`).
     Any,
@@ -27,6 +27,9 @@ impl Clone for CorsOrigins {
     }
 }
 
+/// CORS policy configuration used by `AppBuilder::cors`.
+///
+/// Defaults to mirroring the request origin (permissive but not `*`).
 #[derive(Clone)]
 pub struct CorsConfig {
     pub origins: CorsOrigins,
@@ -45,10 +48,12 @@ impl Default for CorsConfig {
 }
 
 impl CorsConfig {
+    /// Create a permissive config that mirrors the request origin (the default).
     pub fn permissive() -> Self {
         Self::default()
     }
 
+    /// Create a config that allows only the specified origins.
     pub fn with_origins(origins: &[&str]) -> Self {
         Self {
             origins: CorsOrigins::List(origins.iter().map(|s| (*s).to_string()).collect()),
@@ -56,6 +61,7 @@ impl CorsConfig {
         }
     }
 
+    /// Create a config with a custom origin predicate.
     pub fn with_custom_check(f: impl Fn(&str) -> bool + Send + Sync + 'static) -> Self {
         Self {
             origins: CorsOrigins::Custom(Arc::new(f)),
@@ -63,6 +69,7 @@ impl CorsConfig {
         }
     }
 
+    /// Convert into a `tower-http` `CorsLayer` for use in the middleware stack.
     pub fn into_layer(self) -> CorsLayer {
         let methods = vec![
             Method::GET,
@@ -112,6 +119,9 @@ impl CorsConfig {
     }
 }
 
+/// YAML-deserializable form of CORS configuration (loaded from `server.cors` in config files).
+///
+/// Converted to `CorsConfig` automatically by `AppBuilder::run`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct CorsYamlConfig {

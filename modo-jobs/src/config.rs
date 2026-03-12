@@ -16,11 +16,16 @@ pub struct JobsConfig {
     pub queues: Vec<QueueConfig>,
     /// Auto-cleanup configuration for finished jobs.
     pub cleanup: CleanupConfig,
-    /// Optional maximum payload size in bytes. None = unlimited.
+    /// Optional maximum payload size in bytes. `None` means unlimited.
     pub max_payload_bytes: Option<usize>,
 }
 
 impl JobsConfig {
+    /// Validate the configuration, returning an error if any invariant is violated.
+    ///
+    /// Checks that `poll_interval_secs`, `stale_threshold_secs`, and
+    /// `cleanup.interval_secs` are all greater than zero, that at least one queue
+    /// is configured, and that every queue has `concurrency > 0`.
     pub fn validate(&self) -> Result<(), Error> {
         if self.poll_interval_secs == 0 {
             return Err(Error::internal("poll_interval_secs must be > 0"));

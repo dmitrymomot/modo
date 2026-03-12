@@ -3,6 +3,11 @@ use modo::axum::http::request::Parts;
 use std::future::Future;
 use std::marker::PhantomData;
 
+/// Resolves a tenant from a named HTTP request header.
+///
+/// The header value is trimmed of surrounding whitespace before being forwarded
+/// to the `lookup` closure. Returns `Ok(None)` when the header is absent or
+/// contains only whitespace.
 pub struct HeaderResolver<T, F> {
     header_name: String,
     lookup: F,
@@ -15,6 +20,8 @@ where
     F: Fn(String) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Option<T>, modo::Error>> + Send,
 {
+    /// Creates a new `HeaderResolver` that reads `header_name` and calls
+    /// `lookup` with the trimmed header value.
     pub fn new(header_name: impl Into<String>, lookup: F) -> Self {
         Self {
             header_name: header_name.into(),

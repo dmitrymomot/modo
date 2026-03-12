@@ -1,3 +1,25 @@
+//! Transactional email for the modo framework.
+//!
+//! `modo-email` provides Markdown-based email templates, responsive HTML rendering,
+//! plain-text fallback generation, and pluggable delivery transports (SMTP and Resend).
+//!
+//! # Quick Start
+//!
+//! ```rust,no_run
+//! use modo_email::{mailer, EmailConfig, SendEmail};
+//!
+//! # async fn example() -> Result<(), modo::Error> {
+//! let config = EmailConfig::default(); // load from YAML in practice
+//! let m = mailer(&config)?;
+//!
+//! m.send(
+//!     &SendEmail::new("welcome", "user@example.com")
+//!         .var("name", "Alice"),
+//! ).await?;
+//! # Ok(())
+//! # }
+//! ```
+
 mod config;
 mod mailer;
 mod message;
@@ -20,13 +42,18 @@ pub use template::layout::LayoutEngine;
 
 use std::sync::Arc;
 
-/// Create a Mailer with the default FilesystemProvider.
+/// Create a [`Mailer`] using [`FilesystemProvider`] and the transport configured in `config`.
+///
+/// This is the standard entry point. Templates are loaded from `config.templates_path`.
 pub fn mailer(config: &EmailConfig) -> Result<Mailer, modo::Error> {
     let provider = Arc::new(FilesystemProvider::new(&config.templates_path));
     mailer_with(config, provider)
 }
 
-/// Create a Mailer with a custom TemplateProvider.
+/// Create a [`Mailer`] with a custom [`TemplateProvider`].
+///
+/// Use this when you want to load templates from a database, cache, or any
+/// source other than the filesystem.
 pub fn mailer_with(
     config: &EmailConfig,
     provider: Arc<dyn TemplateProvider>,

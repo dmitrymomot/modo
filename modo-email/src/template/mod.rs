@@ -7,8 +7,11 @@ use serde::Deserialize;
 
 /// A parsed email template with subject, body, and optional layout.
 pub struct EmailTemplate {
+    /// Subject line with `{{var}}` placeholders (not yet substituted).
     pub subject: String,
+    /// Markdown body with `{{var}}` placeholders (not yet substituted).
     pub body: String,
+    /// Name of the layout to wrap the body in, or `None` to use `"default"`.
     pub layout: Option<String>,
 }
 
@@ -51,7 +54,12 @@ impl EmailTemplate {
 }
 
 /// Trait for loading email templates by name and locale.
+///
+/// Implement this to load templates from a database, cache, or any source
+/// other than the filesystem. Pass the implementation to [`mailer_with`](crate::mailer_with).
 pub trait TemplateProvider: Send + Sync + 'static {
+    /// Return the template identified by `name`, resolving to the given `locale`
+    /// when available. Pass an empty string for `locale` to request the default.
     fn get(&self, name: &str, locale: &str) -> Result<EmailTemplate, modo::Error>;
 }
 

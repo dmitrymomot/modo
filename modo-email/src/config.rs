@@ -1,25 +1,44 @@
 use serde::Deserialize;
 
+/// Which delivery backend to use for outgoing email.
+///
+/// Serialized as lowercase strings (`"smtp"`, `"resend"`) in YAML/JSON config.
 #[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransportBackend {
+    /// Send via SMTP (default). Requires the `smtp` feature.
     #[default]
     Smtp,
+    /// Send via the Resend HTTP API. Requires the `resend` feature.
     Resend,
 }
 
+/// Top-level email configuration loaded from YAML or environment.
+///
+/// All fields implement `Default`, so partial YAML is valid — only override
+/// what differs from the defaults.
+///
+/// Feature-gated fields (`smtp`, `resend`) are only present when the
+/// corresponding Cargo feature is enabled.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct EmailConfig {
+    /// Which transport backend to use. Defaults to `smtp`.
     pub transport: TransportBackend,
+    /// Directory that contains `.md` template files. Defaults to `"emails"`.
     pub templates_path: String,
+    /// Display name used in the `From` header when no per-email sender is set.
     pub default_from_name: String,
+    /// Email address used in the `From` header when no per-email sender is set.
     pub default_from_email: String,
+    /// Optional default `Reply-To` address.
     pub default_reply_to: Option<String>,
 
+    /// SMTP connection settings. Requires the `smtp` feature.
     #[cfg(feature = "smtp")]
     pub smtp: SmtpConfig,
 
+    /// Resend API settings. Requires the `resend` feature.
     #[cfg(feature = "resend")]
     pub resend: ResendConfig,
 }
@@ -40,13 +59,18 @@ impl Default for EmailConfig {
     }
 }
 
+/// SMTP connection settings. Requires the `smtp` feature.
 #[cfg(feature = "smtp")]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct SmtpConfig {
+    /// SMTP server hostname. Defaults to `"localhost"`.
     pub host: String,
+    /// SMTP server port. Defaults to `587`.
     pub port: u16,
+    /// SMTP authentication username.
     pub username: String,
+    /// SMTP authentication password.
     pub password: String,
     /// When `true`, uses STARTTLS (port 587). When `false`, no TLS at all.
     /// Implicit TLS / SMTPS (port 465) is not currently supported.
@@ -66,10 +90,12 @@ impl Default for SmtpConfig {
     }
 }
 
+/// Resend HTTP API settings. Requires the `resend` feature.
 #[cfg(feature = "resend")]
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct ResendConfig {
+    /// Resend API key (starts with `re_`).
     pub api_key: String,
 }
 

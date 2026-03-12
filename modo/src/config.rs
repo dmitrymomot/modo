@@ -7,16 +7,25 @@ use std::fmt;
 // HTTP config
 // ---------------------------------------------------------------------------
 
+/// HTTP-level middleware settings, configurable under `server.http` in YAML.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct HttpConfig {
+    /// Request timeout in seconds. `None` disables the timeout.
     pub timeout: Option<u64>,
+    /// Maximum request body size (e.g. `"2mb"`, `"512kb"`). `None` means unlimited.
     pub body_limit: Option<String>,
+    /// Enable response compression via `CompressionLayer`.
     pub compression: bool,
+    /// Enable the catch-panic middleware (converts panics into 500 responses).
     pub catch_panic: bool,
+    /// How to handle trailing slashes in request paths.
     pub trailing_slash: TrailingSlash,
+    /// Enable maintenance mode (returns 503 for all requests).
     pub maintenance: bool,
+    /// Optional custom message returned in maintenance mode responses.
     pub maintenance_message: Option<String>,
+    /// Redact `Authorization`, `Cookie`, `Set-Cookie`, and `Proxy-Authorization` headers from logs.
     pub sensitive_headers: bool,
 }
 
@@ -35,12 +44,16 @@ impl Default for HttpConfig {
     }
 }
 
+/// Controls how trailing slashes in request paths are handled.
 #[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TrailingSlash {
+    /// No modification (default).
     #[default]
     None,
+    /// Redirect requests with trailing slashes to the non-trailing-slash URL.
     Strip,
+    /// Redirect requests without trailing slashes to the trailing-slash URL.
     Add,
 }
 
@@ -48,6 +61,11 @@ pub enum TrailingSlash {
 // Security headers config
 // ---------------------------------------------------------------------------
 
+/// Configuration for security-related HTTP response headers.
+///
+/// Applied by the security headers middleware when `enabled` is `true`.
+/// Defaults enable HSTS, `X-Content-Type-Options`, `X-Frame-Options`,
+/// `Referrer-Policy`, `Permissions-Policy`, and a restrictive `CSP`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct SecurityHeadersConfig {
@@ -80,10 +98,15 @@ impl Default for SecurityHeadersConfig {
 // Rate limit config
 // ---------------------------------------------------------------------------
 
+/// Token-bucket rate limiting configuration, applied globally by IP.
+///
+/// Configured under `server.rate_limit` in YAML, or via `AppBuilder::rate_limit`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct RateLimitConfig {
+    /// Maximum number of requests allowed per window.
     pub requests: u32,
+    /// Window duration in seconds.
     pub window_secs: u64,
 }
 
@@ -127,6 +150,7 @@ pub fn parse_size(s: &str) -> Result<usize, String> {
 // Environment
 // ---------------------------------------------------------------------------
 
+/// The runtime environment, detected from the `MODO_ENV` environment variable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Environment {
     Development,
@@ -153,6 +177,7 @@ impl fmt::Display for Environment {
 }
 
 impl Environment {
+    /// Return the string representation of the environment.
     pub fn as_str(&self) -> &str {
         match self {
             Self::Development => "development",
@@ -167,20 +192,34 @@ impl Environment {
 // ServerConfig
 // ---------------------------------------------------------------------------
 
+/// Low-level server configuration, deserialized from the `server` key in YAML.
+///
+/// Most fields have sensible defaults. `secret_key` must be set in production
+/// for stable cookie signing/encryption across restarts.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ServerConfig {
+    /// TCP port to listen on. Default: `3000`.
     pub port: u16,
+    /// Bind address. Default: `"0.0.0.0"`.
     pub host: String,
+    /// Secret key used to sign and encrypt cookies. Empty = random key per restart.
     pub secret_key: String,
+    /// Log level filter (trace/debug/info/warn/error). Default: `"info"`.
     pub log_level: String,
+    /// Trusted proxy CIDR ranges for client IP extraction (e.g. `["10.0.0.0/8"]`).
     pub trusted_proxies: Vec<String>,
+    /// Graceful shutdown timeout in seconds. Default: `30`.
     pub shutdown_timeout_secs: u64,
+    /// Optional CORS policy loaded from YAML (`server.cors`).
     pub cors: Option<CorsYamlConfig>,
+    /// Path for the liveness health check endpoint. Default: `"/_live"`.
     pub liveness_path: String,
+    /// Path for the readiness health check endpoint. Default: `"/_ready"`.
     pub readiness_path: String,
     pub http: HttpConfig,
     pub security_headers: SecurityHeadersConfig,
+    /// Global rate limit policy. `None` disables rate limiting.
     pub rate_limit: Option<RateLimitConfig>,
     #[cfg(any(feature = "static-fs", feature = "static-embed"))]
     pub static_files: Option<crate::static_files::StaticConfig>,
@@ -211,6 +250,7 @@ impl Default for ServerConfig {
 }
 
 impl ServerConfig {
+    /// Return `"host:port"` as a string suitable for binding a TCP listener.
     pub fn bind_address(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
@@ -267,6 +307,9 @@ pub enum ConfigError {
 // Environment detection
 // ---------------------------------------------------------------------------
 
+/// Detect the runtime environment from the `MODO_ENV` environment variable.
+///
+/// Defaults to `"development"` when the variable is not set.
 pub fn detect_env() -> Environment {
     std::env::var("MODO_ENV")
         .unwrap_or_else(|_| "development".to_string())

@@ -30,6 +30,10 @@ use tower_http::sensitive_headers::SetSensitiveRequestHeadersLayer;
 use tower_http::timeout::TimeoutLayer;
 use tracing::{info, warn};
 
+/// Shared application state passed to every handler via axum's state system.
+///
+/// Holds the service registry, resolved server config, and the cookie signing key.
+/// Handlers extract individual services using the `Service<T>` extractor.
 #[derive(Clone)]
 pub struct AppState {
     pub services: ServiceRegistry,
@@ -43,12 +47,18 @@ impl FromRef<AppState> for Key {
     }
 }
 
+/// Type-map registry for application services.
+///
+/// Services are keyed by their concrete `TypeId`. Use `AppBuilder::service` to
+/// register services before startup, and `Service<T>` as a handler extractor to
+/// retrieve them at request time.
 #[derive(Clone, Default)]
 pub struct ServiceRegistry {
     services: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
 }
 
 impl ServiceRegistry {
+    /// Create an empty registry.
     pub fn new() -> Self {
         Self {
             services: Arc::new(HashMap::new()),
@@ -61,6 +71,7 @@ impl ServiceRegistry {
         self
     }
 
+    /// Retrieve a service by type, returning `None` if not registered.
     pub fn get<T: Send + Sync + 'static>(&self) -> Option<Arc<T>> {
         self.services
             .get(&TypeId::of::<T>())
@@ -76,6 +87,13 @@ type EmbedBuilderFn =
 #[cfg(feature = "templates")]
 type TemplatesCallback = Box<dyn FnOnce(&mut crate::templates::TemplateEngine) + Send>;
 
+/// Fluent builder for constructing and running the application server.
+///
+/// `AppBuilder` is the main entry point for configuring the framework before
+/// calling `run()`. It wires routes discovered via `#[modo::handler]` and
+/// `#[modo::module]`, applies the middleware stack, and starts the TCP listener.
+///
+/// Typically obtained from the `app` parameter injected by `#[modo::main]`.
 pub struct AppBuilder {
     app_config: Option<crate::config::AppConfig>,
     services: HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
@@ -98,6 +116,7 @@ pub struct AppBuilder {
 }
 
 impl AppBuilder {
+    /// Create a new builder with request logging enabled and all other settings at defaults.
     pub fn new() -> Self {
         Self {
             app_config: None,
@@ -120,11 +139,13 @@ impl AppBuilder {
         }
     }
 
+    /// Set the application configuration loaded from YAML.
     pub fn config(mut self, config: crate::config::AppConfig) -> Self {
         self.app_config = Some(config);
         self
     }
 
+    /// Register a service in the service registry, accessible via `Service<T>` extractor.
     pub fn service<T: Send + Sync + 'static>(mut self, svc: T) -> Self {
         self.services.insert(TypeId::of::<T>(), Arc::new(svc));
         self
@@ -159,11 +180,15 @@ impl AppBuilder {
         self
     }
 
+    /// Configure CORS. Overrides any `cors` section in the YAML config.
     pub fn cors(mut self, config: CorsConfig) -> Self {
         self.cors_config = Some(config);
         self
     }
 
+    /// Register an async callback to run during graceful shutdown (after HTTP draining).
+    ///
+    /// Each hook runs sequentially with a 5-second budget.
     pub fn on_shutdown<F, Fut>(mut self, f: F) -> Self
     where
         F: FnOnce() -> Fut + Send + 'static,
@@ -173,6 +198,9 @@ impl AppBuilder {
         self
     }
 
+    /// Add an async readiness check exposed at `/_ready`.
+    ///
+    /// The server returns `503` if any check returns an error.
     pub fn readiness_check<F, Fut>(mut self, f: F) -> Self
     where
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -182,56 +210,67 @@ impl AppBuilder {
         self
     }
 
+    /// Disable per-request tracing logs (enabled by default).
     pub fn disable_request_logging(mut self) -> Self {
         self.enable_request_logging = false;
         self
     }
 
+    /// Override the request timeout in seconds. Overrides `server.http.timeout` from YAML.
     pub fn timeout(mut self, secs: u64) -> Self {
         self.ensure_http_override().timeout = Some(secs);
         self
     }
 
+    /// Disable the request timeout. Overrides `server.http.timeout` from YAML.
     pub fn no_timeout(mut self) -> Self {
         self.ensure_http_override().timeout = None;
         self
     }
 
+    /// Set the maximum request body size (e.g. `"2mb"`, `"512kb"`). Overrides `server.http.body_limit`.
     pub fn body_limit(mut self, limit: &str) -> Self {
         self.ensure_http_override().body_limit = Some(limit.to_string());
         self
     }
 
+    /// Enable or disable response compression. Overrides `server.http.compression`.
     pub fn compression(mut self, enabled: bool) -> Self {
         self.ensure_http_override().compression = enabled;
         self
     }
 
+    /// Enable or disable the catch-panic middleware. Overrides `server.http.catch_panic`.
     pub fn catch_panic(mut self, enabled: bool) -> Self {
         self.ensure_http_override().catch_panic = enabled;
         self
     }
 
+    /// Override the security headers configuration. Overrides `server.security_headers` from YAML.
     pub fn security_headers(mut self, config: SecurityHeadersConfig) -> Self {
         self.override_security_headers = Some(config);
         self
     }
 
+    /// Enable and configure the global IP-based rate limiter. Overrides `server.rate_limit` from YAML.
     pub fn rate_limit(mut self, config: RateLimitConfig) -> Self {
         self.override_rate_limit = Some(Some(config));
         self
     }
 
+    /// Disable the global rate limiter. Overrides `server.rate_limit` from YAML.
     pub fn no_rate_limit(mut self) -> Self {
         self.override_rate_limit = Some(None);
         self
     }
 
+    /// Set the trailing-slash handling mode. Overrides `server.http.trailing_slash` from YAML.
     pub fn trailing_slash(mut self, mode: TrailingSlash) -> Self {
         self.override_trailing_slash = Some(mode);
         self
     }
 
+    /// Enable or disable maintenance mode. Overrides `server.http.maintenance` from YAML.
     pub fn maintenance(mut self, enabled: bool) -> Self {
         self.override_maintenance = Some(enabled);
         self
@@ -272,6 +311,11 @@ impl AppBuilder {
         self.override_http.as_mut().unwrap()
     }
 
+    /// Build and run the HTTP server, blocking until shutdown is complete.
+    ///
+    /// Auto-discovers routes and modules registered via `#[modo::handler]` and
+    /// `#[modo::module]`, assembles the middleware stack, binds the TCP listener,
+    /// and performs graceful shutdown on `SIGTERM` / `Ctrl+C`.
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Resolve effective config (builder overrides > YAML config)
         let app_config = self.app_config.unwrap_or_default();

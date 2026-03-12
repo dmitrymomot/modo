@@ -1,6 +1,7 @@
 use axum::Router;
 use axum::routing::MethodRouter;
 
+/// HTTP method variants used in route registrations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
     GET,
@@ -12,10 +13,14 @@ pub enum Method {
     OPTIONS,
 }
 
+/// Function type for per-handler middleware applied to a `MethodRouter`.
 pub type MiddlewareFn =
     fn(MethodRouter<crate::app::AppState>) -> MethodRouter<crate::app::AppState>;
+
+/// Function type for per-module middleware applied to a `Router`.
 pub type RouterMiddlewareFn = fn(Router<crate::app::AppState>) -> Router<crate::app::AppState>;
 
+/// `inventory` registration entry for a single route, created by `#[modo::handler]`.
 pub struct RouteRegistration {
     pub method: Method,
     pub path: &'static str,
@@ -26,6 +31,7 @@ pub struct RouteRegistration {
 
 inventory::collect!(RouteRegistration);
 
+/// `inventory` registration entry for a module, created by `#[modo::module]`.
 pub struct ModuleRegistration {
     pub name: &'static str,
     pub prefix: &'static str,

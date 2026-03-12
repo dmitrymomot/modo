@@ -5,6 +5,10 @@ use axum::http::request::Parts;
 use std::ops::Deref;
 use std::sync::Arc;
 
+/// Extractor that retrieves a service from the `ServiceRegistry` by type.
+///
+/// The inner `Arc<T>` is accessible via `Deref` or by destructuring: `Service(my_svc)`.
+/// Returns a `500 Internal Server Error` if the service was not registered.
 #[derive(Debug, Clone)]
 pub struct Service<T: Send + Sync + 'static>(pub Arc<T>);
 

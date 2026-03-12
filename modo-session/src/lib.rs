@@ -1,3 +1,42 @@
+//! Database-backed HTTP sessions for the modo framework.
+//!
+//! Provides cookie-based session management with:
+//! - ULID session IDs stored in a `modo_sessions` database table
+//! - Cryptographically random tokens (32 bytes); only the SHA-256 hash is persisted
+//! - Server-side fingerprint validation to detect session hijacking
+//! - Automatic LRU eviction when `max_sessions_per_user` is exceeded
+//! - Sliding expiry via periodic `touch` updates
+//!
+//! # Quick start
+//!
+//! ```rust,no_run
+//! // In your app entry point:
+//! let session_store = modo_session::SessionStore::new(
+//!     &db,
+//!     modo_session::SessionConfig::default(),
+//!     config.core.cookies.clone(),
+//! );
+//!
+//! app.service(session_store.clone())
+//!    .layer(modo_session::layer(session_store))
+//!    .run()
+//!    .await?;
+//! ```
+//!
+//! Then inject [`SessionManager`] as an extractor in any handler:
+//!
+//! ```rust,no_run
+//! async fn login(session: modo_session::SessionManager) -> modo::HandlerResult<()> {
+//!     session.authenticate("user-123").await?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! # Features
+//!
+//! - `cleanup-job` — registers a cron job (via `modo-jobs`) that deletes expired
+//!   sessions every 15 minutes.  Requires the `modo-jobs` crate.
+
 pub mod config;
 pub mod device;
 pub mod entity;

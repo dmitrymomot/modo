@@ -18,6 +18,10 @@ pub struct Mailer {
 }
 
 impl Mailer {
+    /// Construct a `Mailer` from its constituent parts.
+    ///
+    /// Prefer the [`mailer`](crate::mailer) or [`mailer_with`](crate::mailer_with)
+    /// factory functions for typical usage.
     pub fn new(
         transport: Arc<dyn MailTransport>,
         templates: Arc<dyn TemplateProvider>,

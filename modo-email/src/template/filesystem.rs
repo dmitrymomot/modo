@@ -7,11 +7,18 @@ use std::path::PathBuf;
 /// variants live in subdirectories named after the locale (e.g. `de/welcome.md`).
 /// When a localized file is not found, the provider falls back to the root
 /// template (`welcome.md`).
+///
+/// Path traversal attempts (names or locales containing `..`, `/`, or `\`)
+/// are rejected and return an error.
 pub struct FilesystemProvider {
     base_dir: PathBuf,
 }
 
 impl FilesystemProvider {
+    /// Create a provider rooted at `base_dir`.
+    ///
+    /// The directory does not need to exist at construction time; errors are
+    /// returned when a template is requested and the file cannot be found.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
