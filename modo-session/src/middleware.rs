@@ -1,3 +1,17 @@
+//! Tower middleware layer that loads, validates, and persists sessions for every
+//! request.
+//!
+//! The public entry point is [`layer`], which wraps a [`SessionStore`] in a
+//! Tower [`Layer`] / [`Service`] pair. The middleware:
+//!
+//! 1. Reads the session token from the request cookie.
+//! 2. Loads the matching, non-expired session from the database.
+//! 3. Optionally validates a server-side request fingerprint.
+//! 4. Injects shared state so the [`crate::SessionManager`] extractor can
+//!    operate within the handler.
+//! 5. After the handler returns, applies any pending session action (set cookie,
+//!    remove cookie, or touch expiry).
+
 use crate::meta::{SessionMeta, extract_client_ip, header_str};
 use crate::store::SessionStore;
 use crate::types::{SessionData, SessionToken};

@@ -11,6 +11,14 @@ use modo_db::sea_orm::{
     QuerySelect, Set,
 };
 
+/// Low-level database-backed session store.
+///
+/// Handles all CRUD operations on the `modo_sessions` table.  Application code
+/// should rarely interact with `SessionStore` directly; use [`crate::SessionManager`]
+/// (the axum extractor) for request-scoped session operations instead.
+///
+/// `SessionStore` is cheaply cloneable and is intended to be registered as a
+/// managed service so it can be injected into background jobs.
 #[derive(Clone)]
 pub struct SessionStore {
     db: DbPool,
@@ -19,6 +27,7 @@ pub struct SessionStore {
 }
 
 impl SessionStore {
+    /// Create a new store backed by `db` with the given session and cookie config.
     pub fn new(db: &DbPool, config: SessionConfig, cookie_config: CookieConfig) -> Self {
         Self {
             db: db.clone(),
@@ -27,14 +36,21 @@ impl SessionStore {
         }
     }
 
+    /// Return a reference to the session configuration.
     pub fn config(&self) -> &SessionConfig {
         &self.config
     }
 
+    /// Return a reference to the cookie configuration.
     pub fn cookie_config(&self) -> &CookieConfig {
         &self.cookie_config
     }
 
+    /// Insert a new session for `user_id` and return the persisted [`SessionData`]
+    /// together with the plaintext [`SessionToken`] (to be set in the cookie).
+    ///
+    /// After inserting, LRU eviction is applied if the user has exceeded
+    /// [`SessionConfig::max_sessions_per_user`].
     pub async fn create(
         &self,
         meta: &SessionMeta,
@@ -73,6 +89,9 @@ impl SessionStore {
         Ok((model_to_session_data(&result)?, token))
     }
 
+    /// Load a session by its ID.  Returns `None` if not found (does not check
+    /// expiry — call [`read_by_token`][Self::read_by_token] for expiry-aware
+    /// lookup).
     pub async fn read(&self, id: &SessionId) -> Result<Option<SessionData>, Error> {
         let model = Entity::find_by_id(id.as_str())
             .one(self.db.connection())
@@ -85,6 +104,9 @@ impl SessionStore {
         }
     }
 
+    /// Load a non-expired session by plaintext token (hashes it internally).
+    ///
+    /// Returns `None` if no matching, non-expired session is found.
     pub async fn read_by_token(&self, token: &SessionToken) -> Result<Option<SessionData>, Error> {
         let hash = token.hash();
         let model = Entity::find()
@@ -100,6 +122,7 @@ impl SessionStore {
         }
     }
 
+    /// Delete a session by ID.
     pub async fn destroy(&self, id: &SessionId) -> Result<(), Error> {
         Entity::delete_by_id(id.as_str())
             .exec(self.db.connection())
@@ -108,6 +131,8 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Replace the token for a session with a newly generated one and return the
+    /// new plaintext token.  The session ID and all other fields are unchanged.
     pub async fn rotate_token(&self, id: &SessionId) -> Result<SessionToken, Error> {
         let new_token = SessionToken::generate();
         let new_hash = new_token.hash();
@@ -126,6 +151,7 @@ impl SessionStore {
         Ok(new_token)
     }
 
+    /// Update `last_active_at` to now and set a new `expires_at` for a session.
     pub async fn touch(&self, id: &SessionId, new_expires_at: DateTime<Utc>) -> Result<(), Error> {
         let model = ActiveModel {
             id: Set(id.as_str().to_string()),
@@ -142,6 +168,7 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Replace the JSON payload stored in a session.
     pub async fn update_data(&self, id: &SessionId, data: serde_json::Value) -> Result<(), Error> {
         let model = ActiveModel {
             id: Set(id.as_str().to_string()),
@@ -158,6 +185,7 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Delete all sessions belonging to `user_id`.
     pub async fn destroy_all_for_user(&self, user_id: &str) -> Result<(), Error> {
         Entity::delete_many()
             .filter(Column::UserId.eq(user_id))
@@ -167,6 +195,8 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Delete all sessions belonging to `user_id` except the one identified by
+    /// `keep`.
     pub async fn destroy_all_except(&self, user_id: &str, keep: &SessionId) -> Result<(), Error> {
         Entity::delete_many()
             .filter(Column::UserId.eq(user_id))
@@ -177,6 +207,8 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Return all non-expired sessions for `user_id`, ordered by most-recently-active
+    /// first.
     pub async fn list_for_user(&self, user_id: &str) -> Result<Vec<SessionData>, Error> {
         let models = Entity::find()
             .filter(Column::UserId.eq(user_id))
@@ -189,6 +221,10 @@ impl SessionStore {
         models.iter().map(model_to_session_data).collect()
     }
 
+    /// Delete all sessions whose `expires_at` is in the past.
+    ///
+    /// Returns the number of rows deleted.  Called automatically by the
+    /// `cleanup-job` feature's cron job.
     pub async fn cleanup_expired(&self) -> Result<u64, Error> {
         let result = Entity::delete_many()
             .filter(Column::ExpiresAt.lt(Utc::now()))

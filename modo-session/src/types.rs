@@ -10,14 +10,17 @@ use std::str::FromStr;
 pub struct SessionId(String);
 
 impl SessionId {
+    /// Generate a new, globally unique session ID.
     pub fn new() -> Self {
         Self(ulid::Ulid::new().to_string())
     }
 
+    /// Wrap an existing string as a `SessionId` without validation.
     pub fn from_raw(s: impl Into<String>) -> Self {
         Self(s.into())
     }
 
+    /// Borrow the underlying ULID string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -45,18 +48,24 @@ impl FromStr for SessionId {
 
 /// Opaque session token (32 random bytes).
 ///
-/// Stored in cookie; only the SHA256 hash is persisted to DB.
-/// Debug output is redacted to prevent accidental logging.
+/// Stored in the browser cookie as a 64-character hex string; only the SHA-256
+/// hash is persisted to the database so a compromised DB row cannot be replayed.
+/// `Debug` and `Display` output are redacted (`****`) to prevent accidental
+/// logging of the raw token.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct SessionToken([u8; 32]);
 
 impl SessionToken {
+    /// Generate a cryptographically random 32-byte token.
     pub fn generate() -> Self {
         let mut bytes = [0u8; 32];
         rand::rng().fill_bytes(&mut bytes);
         Self(bytes)
     }
 
+    /// Decode a token from a 64-character lowercase hex string.
+    ///
+    /// Returns `Err` if `s` is not exactly 64 hex characters.
     pub fn from_hex(s: &str) -> Result<Self, &'static str> {
         if s.len() != 64 {
             return Err("token must be 64 hex characters");
@@ -70,6 +79,7 @@ impl SessionToken {
         Ok(Self(bytes))
     }
 
+    /// Encode the raw token bytes as a 64-character lowercase hex string.
     pub fn as_hex(&self) -> String {
         let mut s = String::with_capacity(64);
         for b in &self.0 {
@@ -78,6 +88,9 @@ impl SessionToken {
         s
     }
 
+    /// Compute the SHA-256 hash of the token as a 64-character lowercase hex string.
+    ///
+    /// This is the value stored in the database; the raw token is never persisted.
     pub fn hash(&self) -> String {
         let digest = Sha256::digest(self.0);
         let mut s = String::with_capacity(64);
@@ -122,20 +135,33 @@ fn hex_digit(b: u8) -> Option<u8> {
     }
 }
 
-/// Full session record.
+/// Full session record loaded from the database.
+///
+/// Returned by [`crate::manager::SessionManager::current`] and [`crate::manager::SessionManager::list_my_sessions`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
+    /// Unique session identifier (ULID).
     pub id: SessionId,
     pub(crate) token_hash: String,
+    /// ID of the authenticated user.
     pub user_id: String,
+    /// Client IP address at session creation time.
     pub ip_address: String,
+    /// Raw `User-Agent` header value.
     pub user_agent: String,
+    /// Human-readable device name derived from the User-Agent (e.g. `"Chrome on macOS"`).
     pub device_name: String,
+    /// Device category: `"desktop"`, `"mobile"`, or `"tablet"`.
     pub device_type: String,
+    /// SHA-256 fingerprint of stable request headers used for hijack detection.
     pub fingerprint: String,
+    /// Arbitrary JSON payload attached to the session.
     pub data: serde_json::Value,
+    /// Timestamp when the session was created.
     pub created_at: DateTime<Utc>,
+    /// Timestamp of the last activity (updated on touch).
     pub last_active_at: DateTime<Utc>,
+    /// Timestamp after which the session is considered expired.
     pub expires_at: DateTime<Utc>,
 }
 

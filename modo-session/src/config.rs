@@ -1,13 +1,43 @@
 use serde::Deserialize;
 
+/// Configuration for the session subsystem.
+///
+/// All fields have sane defaults (see [`Default`]). Deserialises from YAML/TOML
+/// with `#[serde(default)]`, so you only need to specify the fields you want to
+/// override.
+///
+/// # Example (YAML)
+///
+/// ```yaml
+/// session_ttl_secs: 86400
+/// cookie_name: "_sess"
+/// validate_fingerprint: true
+/// touch_interval_secs: 600
+/// max_sessions_per_user: 5
+/// trusted_proxies:
+///   - "10.0.0.0/8"
+/// ```
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct SessionConfig {
+    /// Session lifetime in seconds (default: 2 592 000 = 30 days).
     pub session_ttl_secs: u64,
+    /// Name of the HTTP cookie that carries the session token (default: `"_session"`).
     pub cookie_name: String,
+    /// Whether to reject sessions whose request fingerprint changed since creation
+    /// (default: `true`).  Disabling this reduces hijack protection but allows users
+    /// behind rotating IPs or proxies to keep their session.
     pub validate_fingerprint: bool,
+    /// Minimum number of seconds between consecutive `touch` (expiry renewal) DB
+    /// writes (default: 300 = 5 minutes).
     pub touch_interval_secs: u64,
+    /// Maximum number of concurrent active sessions per user before the
+    /// least-recently-used session is evicted (default: 10).
     pub max_sessions_per_user: usize,
+    /// CIDR ranges of trusted reverse-proxy addresses.  When non-empty, the
+    /// `X-Forwarded-For` / `X-Real-IP` headers are only trusted when the TCP
+    /// connection originates from one of these ranges (default: empty = trust
+    /// proxy headers unconditionally).
     pub trusted_proxies: Vec<String>,
 }
 

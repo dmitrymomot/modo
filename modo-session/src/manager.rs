@@ -7,6 +7,16 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 
+/// Request-scoped session manager, available as an axum extractor.
+///
+/// Inject `SessionManager` as a handler parameter to read or modify the session
+/// for the current request.  The session middleware must be installed via
+/// [`crate::layer`] for the extractor to work; if the middleware is missing the
+/// extractor returns an internal error.
+///
+/// Changes made through `SessionManager` (authentication, logout, token
+/// rotation, data writes) are applied to the HTTP response cookie automatically
+/// by the middleware after the handler returns.
 pub struct SessionManager {
     state: Arc<SessionManagerState>,
 }
@@ -33,6 +43,9 @@ impl SessionManager {
     }
 
     /// Create a session with custom data attached.
+    ///
+    /// Any existing session is destroyed before the new one is created to
+    /// prevent session-fixation attacks.
     pub async fn authenticate_with(
         &self,
         user_id: &str,
