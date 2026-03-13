@@ -720,8 +720,8 @@ impl AppBuilder {
         let listener = TcpListener::bind(&bind_addr).await?;
 
         // Print startup banner (if enabled)
-        let total_routes = root_routes.len()
-            + module_routes.values().map(|v| v.len()).sum::<usize>();
+        let total_routes =
+            root_routes.len() + module_routes.values().map(|v| v.len()).sum::<usize>();
         if server_config.show_banner {
             crate::banner::print(&server_config, total_routes, modules.len());
         } else {
