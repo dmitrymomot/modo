@@ -1,5 +1,7 @@
 # modo-email
 
+[![docs.rs](https://img.shields.io/docsrs/modo-email)](https://docs.rs/modo-email)
+
 Email sending for the [modo](https://github.com/dmitrymomot/modo) framework. Markdown templates, responsive HTML output, pluggable transports, multi-tenant sender customization.
 
 ## Features

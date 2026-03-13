@@ -1,5 +1,7 @@
 # modo-db
 
+[![docs.rs](https://img.shields.io/docsrs/modo-db)](https://docs.rs/modo-db)
+
 Database integration for the modo framework. Provides SeaORM-backed connection pooling, automatic schema synchronisation, versioned migrations, and a compile-time entity/migration registration system built on `inventory`.
 
 ## Features

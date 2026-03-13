@@ -1,5 +1,7 @@
 # modo-jobs
 
+[![docs.rs](https://img.shields.io/docsrs/modo-jobs)](https://docs.rs/modo-jobs)
+
 Database-backed background job processing for the modo framework.
 
 Jobs are defined as plain async functions, registered at link time via the

@@ -1,5 +1,7 @@
 # modo-upload
 
+[![docs.rs](https://img.shields.io/docsrs/modo-upload)](https://docs.rs/modo-upload)
+
 File upload support for modo applications: multipart form parsing, pluggable
 storage backends, and per-field validation — all driven by a single derive macro.
 

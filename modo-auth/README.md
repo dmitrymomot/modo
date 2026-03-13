@@ -1,5 +1,7 @@
 # modo-auth
 
+[![docs.rs](https://img.shields.io/docsrs/modo-auth)](https://docs.rs/modo-auth)
+
 Session-based authentication and Argon2id password hashing for modo applications.
 
 ## Features

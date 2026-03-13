@@ -1,5 +1,7 @@
 # modo-upload-macros
 
+[![docs.rs](https://img.shields.io/docsrs/modo-upload-macros)](https://docs.rs/modo-upload-macros)
+
 Procedural macro crate for `modo-upload`. Provides the `#[derive(FromMultipart)]` macro that generates
 `modo_upload::FromMultipart` implementations for structs, enabling automatic parsing and validation of
 `multipart/form-data` requests.

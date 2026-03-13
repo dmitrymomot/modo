@@ -1,5 +1,7 @@
 # modo-cli
 
+[![docs.rs](https://img.shields.io/docsrs/modo-cli)](https://docs.rs/modo-cli)
+
 CLI tool for scaffolding new [modo](https://github.com/dmitrymomot/modo) framework projects.
 
 ## Installation

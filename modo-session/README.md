@@ -1,5 +1,7 @@
 # modo-session
 
+[![docs.rs](https://img.shields.io/docsrs/modo-session)](https://docs.rs/modo-session)
+
 Database-backed HTTP session management for the modo framework.
 
 Sessions are identified by a ULID, authenticated via a cryptographically random

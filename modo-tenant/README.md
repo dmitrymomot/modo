@@ -1,5 +1,7 @@
 # modo-tenant
 
+[![docs.rs](https://img.shields.io/docsrs/modo-tenant)](https://docs.rs/modo-tenant)
+
 Multi-tenancy support for modo applications: resolve, cache, and extract the current tenant from any HTTP request signal.
 
 ## Features

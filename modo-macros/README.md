@@ -1,5 +1,7 @@
 # modo-macros
 
+[![docs.rs](https://img.shields.io/docsrs/modo-macros)](https://docs.rs/modo-macros)
+
 Procedural macros for the modo web framework. Provides attribute macros for
 route registration, application bootstrap, and derive macros for input
 validation and sanitization.

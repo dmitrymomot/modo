@@ -1,5 +1,7 @@
 # modo-jobs-macros
 
+[![docs.rs](https://img.shields.io/docsrs/modo-jobs-macros)](https://docs.rs/modo-jobs-macros)
+
 Procedural macro companion for `modo-jobs`.
 
 This crate provides the `#[job]` attribute macro. It is re-exported by

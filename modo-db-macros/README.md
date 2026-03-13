@@ -1,5 +1,7 @@
 # modo-db-macros
 
+[![docs.rs](https://img.shields.io/docsrs/modo-db-macros)](https://docs.rs/modo-db-macros)
+
 Procedural macros powering the `modo-db` entity and migration system.
 
 This crate is an implementation detail of `modo-db`. Consume these macros through the

@@ -1,5 +1,7 @@
 # modo
 
+[![docs.rs](https://img.shields.io/docsrs/modo)](https://docs.rs/modo)
+
 Rust web framework for micro-SaaS applications. Single binary, compile-time route discovery, batteries included.
 
 ## Features
