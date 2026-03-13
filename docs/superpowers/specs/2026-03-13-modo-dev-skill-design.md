@@ -54,21 +54,21 @@ modo/                                   # existing repo root
 
 ```json
 {
-  "name": "modo",
-  "owner": {
-    "name": "Dmytro Momot"
-  },
-  "plugins": [
-    {
-      "name": "modo-dev",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/dmitrymomot/modo.git",
-        "path": "claude-plugin"
-      },
-      "description": "Skills for building apps with the modo Rust web framework"
-    }
-  ]
+    "name": "modo",
+    "owner": {
+        "name": "Dmytro Momot"
+    },
+    "plugins": [
+        {
+            "name": "modo-dev",
+            "source": {
+                "source": "git-subdir",
+                "url": "https://github.com/dmitrymomot/modo.git",
+                "path": "claude-plugin"
+            },
+            "description": "Skills for building apps with the modo Rust web framework"
+        }
+    ]
 }
 ```
 
@@ -76,12 +76,12 @@ modo/                                   # existing repo root
 
 ```json
 {
-  "name": "modo-dev",
-  "description": "Skills for building applications with the modo Rust web framework",
-  "version": "0.1.0",
-  "author": { "name": "Dmytro Momot" },
-  "repository": "https://github.com/dmitrymomot/modo",
-  "license": "Apache-2.0"
+    "name": "modo-dev",
+    "description": "Skills for building applications with the modo Rust web framework",
+    "version": "0.1.0",
+    "author": { "name": "Dmytro Momot" },
+    "repository": "https://github.com/dmitrymomot/modo",
+    "license": "Apache-2.0"
 }
 ```
 
@@ -93,14 +93,14 @@ modo/                                   # existing repo root
 
 ```yaml
 ---
-name: modo
+name: modo-dev
 description: >
-  This skill should be used when the user is building an application with the
-  modo Rust web framework, asks about modo handlers, modules, middleware,
-  database entities, migrations, jobs, email, sessions, authentication,
-  templates, HTMX, SSE, uploads, multi-tenancy, configuration, or testing
-  patterns. Also use when the user references modo macros like #[handler],
-  #[module], #[main], #[entity], #[job], #[view], or FromMultipart.
+    This skill should be used when the user is building an application with the
+    modo Rust web framework, asks about modo handlers, modules, middleware,
+    database entities, migrations, jobs, email, sessions, authentication,
+    templates, HTMX, SSE, uploads, multi-tenancy, configuration, or testing
+    patterns. Also use when the user references modo macros like #[handler],
+    #[module], #[main], #[entity], #[job], #[view], or FromMultipart.
 ---
 ```
 
@@ -121,40 +121,40 @@ Project scaffolded by `modo-cli` with all needed modules enabled. This skill foc
 
 Compact table:
 
-| Macro | Crate | Purpose |
-|-------|-------|---------|
-| `#[modo::handler(METHOD, PATH)]` | modo-macros | Route registration |
-| `#[modo::module(prefix = "/path")]` | modo-macros | Route prefix grouping |
-| `#[modo::main]` / `#[modo::main(static_assets = "path/")]` | modo-macros | App bootstrap (optional embedded static assets) |
-| `#[modo::error_handler]` | modo-macros | Custom error handling |
-| `#[modo::view]` | modo-macros | Template rendering |
-| `#[modo::template_function]` | modo-macros | Custom template function |
-| `#[modo::template_filter]` | modo-macros | Custom template filter |
-| `modo::t!(i18n, "key")` | modo-macros | i18n translation (function-like macro) |
-| `#[derive(Sanitize)]` | modo-macros | Input sanitization |
-| `#[derive(Validate)]` | modo-macros | Input validation |
-| `#[modo_db::entity]` | modo-db-macros | Entity + migration generation |
-| `#[modo_db::migration]` | modo-db-macros | Versioned SQL migration |
-| `#[modo_jobs::job]` | modo-jobs-macros | Job definition |
-| `#[derive(FromMultipart)]` | modo-upload-macros | Multipart form parsing |
+| Macro                                                      | Crate              | Purpose                                         |
+| ---------------------------------------------------------- | ------------------ | ----------------------------------------------- |
+| `#[modo::handler(METHOD, PATH)]`                           | modo-macros        | Route registration                              |
+| `#[modo::module(prefix = "/path")]`                        | modo-macros        | Route prefix grouping                           |
+| `#[modo::main]` / `#[modo::main(static_assets = "path/")]` | modo-macros        | App bootstrap (optional embedded static assets) |
+| `#[modo::error_handler]`                                   | modo-macros        | Custom error handling                           |
+| `#[modo::view]`                                            | modo-macros        | Template rendering                              |
+| `#[modo::template_function]`                               | modo-macros        | Custom template function                        |
+| `#[modo::template_filter]`                                 | modo-macros        | Custom template filter                          |
+| `modo::t!(i18n, "key")`                                    | modo-macros        | i18n translation (function-like macro)          |
+| `#[derive(Sanitize)]`                                      | modo-macros        | Input sanitization                              |
+| `#[derive(Validate)]`                                      | modo-macros        | Input validation                                |
+| `#[modo_db::entity]`                                       | modo-db-macros     | Entity + migration generation                   |
+| `#[modo_db::migration]`                                    | modo-db-macros     | Versioned SQL migration                         |
+| `#[modo_jobs::job]`                                        | modo-jobs-macros   | Job definition                                  |
+| `#[derive(FromMultipart)]`                                 | modo-upload-macros | Multipart form parsing                          |
 
 #### 4. Topic Index
 
 Maps tasks to reference files:
 
-| Task | Read |
-|------|------|
-| File organization, error patterns, custom error handlers, gotchas | `references/conventions.md` |
-| Handlers, routing, modules, middleware, rate limiting, CORS, security headers, static files | `references/handlers.md` |
-| Entities, migrations, queries, pagination | `references/database.md` |
-| Background jobs, cron scheduling | `references/jobs.md` |
-| Email templates, transports | `references/email.md` |
-| Authentication, sessions, password hashing | `references/auth-sessions.md` |
-| Templates, HTMX, SSE, CSRF, i18n | `references/templates-htmx.md` |
-| File uploads, multipart, storage backends | `references/upload.md` |
-| Multi-tenancy resolver patterns | `references/tenant.md` |
-| YAML config, env interpolation, feature flags | `references/config.md` |
-| Testing middleware, cookies, inventory | `references/testing.md` |
+| Task                                                                                        | Read                           |
+| ------------------------------------------------------------------------------------------- | ------------------------------ |
+| File organization, error patterns, custom error handlers, gotchas                           | `references/conventions.md`    |
+| Handlers, routing, modules, middleware, rate limiting, CORS, security headers, static files | `references/handlers.md`       |
+| Entities, migrations, queries, pagination                                                   | `references/database.md`       |
+| Background jobs, cron scheduling                                                            | `references/jobs.md`           |
+| Email templates, transports                                                                 | `references/email.md`          |
+| Authentication, sessions, password hashing                                                  | `references/auth-sessions.md`  |
+| Templates, HTMX, SSE, CSRF, i18n                                                            | `references/templates-htmx.md` |
+| File uploads, multipart, storage backends                                                   | `references/upload.md`         |
+| Multi-tenancy resolver patterns                                                             | `references/tenant.md`         |
+| YAML config, env interpolation, feature flags                                               | `references/config.md`         |
+| Testing middleware, cookies, inventory                                                      | `references/testing.md`        |
 
 ## Reference Files
 
@@ -164,23 +164,24 @@ Each reference file (2,000-4,000 words) follows this structure:
 2. **Built-in first** — leads with modo's built-in way to do things
 3. **Patterns + inline code examples** — extracted from actual crate source, examples, and tests
 4. **Common recipes** — hand-written walkthroughs connecting patterns together
-5. **Gotchas** — topic-specific pitfalls
+5. **Integration patterns** — cross-module interactions relevant to this topic (see Cross-References section below)
+6. **Gotchas** — topic-specific pitfalls
 
 ### Reference file → docs.rs mapping
 
-| File | docs.rs links |
-|------|---------------|
-| `conventions.md` | https://docs.rs/modo |
-| `handlers.md` | https://docs.rs/modo, https://docs.rs/modo-macros |
-| `database.md` | https://docs.rs/modo-db, https://docs.rs/modo-db-macros |
-| `jobs.md` | https://docs.rs/modo-jobs, https://docs.rs/modo-jobs-macros |
-| `email.md` | https://docs.rs/modo-email |
-| `auth-sessions.md` | https://docs.rs/modo-auth, https://docs.rs/modo-session |
-| `templates-htmx.md` | https://docs.rs/modo (features: templates, sse, csrf, i18n) |
-| `upload.md` | https://docs.rs/modo-upload, https://docs.rs/modo-upload-macros |
-| `tenant.md` | https://docs.rs/modo-tenant |
-| `config.md` | https://docs.rs/modo |
-| `testing.md` | All relevant crates |
+| File                | docs.rs links                                                   |
+| ------------------- | --------------------------------------------------------------- |
+| `conventions.md`    | https://docs.rs/modo                                            |
+| `handlers.md`       | https://docs.rs/modo, https://docs.rs/modo-macros               |
+| `database.md`       | https://docs.rs/modo-db, https://docs.rs/modo-db-macros         |
+| `jobs.md`           | https://docs.rs/modo-jobs, https://docs.rs/modo-jobs-macros     |
+| `email.md`          | https://docs.rs/modo-email                                      |
+| `auth-sessions.md`  | https://docs.rs/modo-auth, https://docs.rs/modo-session         |
+| `templates-htmx.md` | https://docs.rs/modo (features: templates, sse, csrf, i18n)     |
+| `upload.md`         | https://docs.rs/modo-upload, https://docs.rs/modo-upload-macros |
+| `tenant.md`         | https://docs.rs/modo-tenant                                     |
+| `config.md`         | https://docs.rs/modo                                            |
+| `testing.md`        | All relevant crates                                             |
 
 ### Reference file content summaries
 
@@ -206,6 +207,44 @@ Each reference file (2,000-4,000 words) follows this structure:
 
 **testing.md** — Tower middleware testing with `Router::new().route(...).layer(mw).oneshot(request)` (no AppState needed, handler reads `Extension<T>`), cookie attribute testing (create `AppState` with custom `CookieConfig`, fire request, assert `Set-Cookie` header), inventory force-linking with `use crate::entity::foo as _;`, feature-gated testing with `cargo test -p crate --features feat`.
 
+## Cross-References & Integration Patterns
+
+Many modo features interact with each other. Each reference file includes an **Integration Patterns** section covering the cross-module interactions relevant to its topic. This table defines which interactions go where.
+
+### Cross-reference ownership
+
+| Interaction | Documented in | What to cover |
+|---|---|---|
+| i18n in templates | `templates-htmx.md` | `t!()` in MiniJinja templates vs in Rust handlers — different syntax |
+| Auth user in templates | `auth-sessions.md` | `UserContextLayer` middleware must be in stack for `{{ user }}` to work in templates |
+| Tenant in templates | `tenant.md` | `TenantContextLayer` injects tenant into template context |
+| CSRF in HTMX forms | `templates-htmx.md` | CSRF token in forms + HTMX header interaction with double-submit cookie |
+| Email via jobs | `email.md` | Mailer on jobs builder not app, enqueue `SendEmailPayload`, accessing `Db` from job |
+| Auth backed by entity | `auth-sessions.md` | `UserProvider` implementation that queries a `#[entity]` — full example |
+| Session cleanup job | `auth-sessions.md` | Requires both `modo-session` `cleanup-job` feature AND `modo-jobs` wired up |
+| Tenant-scoped queries | `tenant.md` | Extract `Tenant` + manually filter `Db` queries — no built-in magic, manual `WHERE` |
+| Upload with auth | `upload.md` | Middleware order matters — auth middleware before multipart parsing |
+| Config wiring modules | `config.md` | How config sections feed into `AppBuilder` — DB, jobs, email, session all read from config |
+| Services in jobs | `jobs.md` | Accessing `Db`, `Mailer`, or other services inside `#[job]` handlers |
+| API vs web errors | `conventions.md` | `HandlerResult` for JSON APIs, `ViewResult` for templates, `#[error_handler]` customization |
+| Static files + templates | `handlers.md` | `static-fs` in dev vs `static-embed` in prod, referencing asset paths in templates |
+| Multiple databases | `database.md` | Group-scoped sync — separate entities into different DBs |
+| HTMX + non-200 status | `templates-htmx.md` | Non-200 skips render — strategies for showing errors in HTMX partial responses |
+
+### Common multi-module workflows
+
+`conventions.md` includes a quick-reference table for composite tasks:
+
+| Workflow | Reference files to read (in order) |
+|---|---|
+| Authenticated CRUD API | `conventions.md` → `database.md` → `handlers.md` → `auth-sessions.md` |
+| Web form with validation | `conventions.md` → `handlers.md` → `templates-htmx.md` |
+| Background email on user action | `handlers.md` → `jobs.md` → `email.md` |
+| File upload with auth | `auth-sessions.md` → `upload.md` → `handlers.md` |
+| Multi-tenant web app | `tenant.md` → `database.md` → `templates-htmx.md` |
+| HTMX live dashboard | `templates-htmx.md` → `auth-sessions.md` |
+| Full-stack feature (entity → API → job → email) | `conventions.md` → `database.md` → `handlers.md` → `jobs.md` → `email.md` |
+
 ## Scope Boundaries
 
 The skill helps with **building features on top of a scaffolded modo project**. It does NOT cover:
@@ -221,15 +260,15 @@ Reference files cover the **80% use-case patterns**, not exhaustive API surface.
 
 ## Example → Reference Mapping
 
-| Example | Primary reference |
-|---------|-------------------|
-| `hello` | `handlers.md` |
-| `todo-api` | `handlers.md`, `database.md` |
-| `jobs` | `jobs.md` |
-| `upload` | `upload.md` |
-| `templates` | `templates-htmx.md` |
-| `sse-chat` | `templates-htmx.md`, `auth-sessions.md` |
-| `sse-dashboard` | `templates-htmx.md` |
+| Example         | Primary reference                       |
+| --------------- | --------------------------------------- |
+| `hello`         | `handlers.md`                           |
+| `todo-api`      | `handlers.md`, `database.md`            |
+| `jobs`          | `jobs.md`                               |
+| `upload`        | `upload.md`                             |
+| `templates`     | `templates-htmx.md`                     |
+| `sse-chat`      | `templates-htmx.md`, `auth-sessions.md` |
+| `sse-dashboard` | `templates-htmx.md`                     |
 
 ## Implementation Approach
 
@@ -249,14 +288,14 @@ No guessing or hallucinating APIs. Every code example in a reference file must b
 2. Write `SKILL.md`
 3. Write `references/conventions.md` (foundational — other refs depend on it)
 4. Write remaining reference files one at a time, reading each crate in depth:
-   - `handlers.md` (modo + modo-macros)
-   - `database.md` (modo-db + modo-db-macros)
-   - `jobs.md` (modo-jobs + modo-jobs-macros)
-   - `email.md` (modo-email)
-   - `auth-sessions.md` (modo-auth + modo-session)
-   - `templates-htmx.md` (modo features: templates, sse, csrf, i18n)
-   - `upload.md` (modo-upload + modo-upload-macros)
-   - `tenant.md` (modo-tenant)
-   - `config.md` (modo config module)
-   - `testing.md` (patterns across crates)
+    - `handlers.md` (modo + modo-macros)
+    - `database.md` (modo-db + modo-db-macros)
+    - `jobs.md` (modo-jobs + modo-jobs-macros)
+    - `email.md` (modo-email)
+    - `auth-sessions.md` (modo-auth + modo-session)
+    - `templates-htmx.md` (modo features: templates, sse, csrf, i18n)
+    - `upload.md` (modo-upload + modo-upload-macros)
+    - `tenant.md` (modo-tenant)
+    - `config.md` (modo config module)
+    - `testing.md` (patterns across crates)
 5. Review all files for accuracy
