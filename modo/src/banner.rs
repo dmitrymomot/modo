@@ -21,6 +21,7 @@ pub(crate) fn print(server_config: &ServerConfig, route_count: usize, module_cou
         String::new()
     };
 
+    println!();
     println!(" >> version:      {version}");
     println!(" >> environment:  {environment}");
     println!(" >> listening on: http://localhost:{port}");
