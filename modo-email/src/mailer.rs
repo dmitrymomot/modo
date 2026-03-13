@@ -58,9 +58,17 @@ impl Mailer {
 
         // Wrap HTML body in a layout.
         let layout_name = template.layout.as_deref().unwrap_or("default");
-        let base_ctx = minijinja::Value::from_serialize(&email.context);
-        let extra_ctx = minijinja::context! { content => html_body, subject => &subject };
-        let layout_ctx = minijinja::context! { ..base_ctx, ..extra_ctx };
+        let mut layout_map: std::collections::BTreeMap<String, minijinja::Value> = email
+            .context
+            .iter()
+            .map(|(k, v)| (k.clone(), minijinja::Value::from_serialize(v)))
+            .collect();
+        layout_map.insert("content".to_string(), minijinja::Value::from(html_body));
+        layout_map.insert(
+            "subject".to_string(),
+            minijinja::Value::from(subject.as_str()),
+        );
+        let layout_ctx = minijinja::Value::from_serialize(&layout_map);
         let html = self.layout_engine.render(layout_name, &layout_ctx)?;
 
         // Resolve sender (per-email override or default).
@@ -231,6 +239,33 @@ mod tests {
         // Should use default color, not the injection attempt
         assert!(msg.html.contains(markdown::DEFAULT_BUTTON_COLOR));
         assert!(!msg.html.contains("position:absolute"));
+    }
+
+    #[test]
+    fn layout_content_with_extra_context_vars() {
+        let transport = Arc::new(MockTransport {
+            sent: std::sync::Mutex::new(Vec::new()),
+        });
+        let mailer = test_mailer(transport);
+
+        let msg = mailer
+            .render(
+                &SendEmail::new("welcome", "user@test.com")
+                    .var("name", "Alice")
+                    .var("footer_text", "My Footer"),
+            )
+            .unwrap();
+
+        // content (rendered markdown) must be present in the layout
+        assert!(
+            msg.html.contains("Alice"),
+            "html should contain rendered content"
+        );
+        // extra context var must also pass through to layout
+        assert!(
+            msg.html.contains("My Footer"),
+            "html should contain footer_text"
+        );
     }
 
     #[test]
