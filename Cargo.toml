@@ -1,7 +1,36 @@
 [workspace]
 resolver = "2"
-members = ["modo", "modo-macros", "modo-db", "modo-db-macros", "modo-email", "modo-jobs", "modo-jobs-macros", "modo-session", "modo-auth", "modo-tenant", "modo-upload", "modo-upload-macros", "modo-cli", "examples/*"]
+members = [
+  "modo",
+  "modo-macros",
+  "modo-db",
+  "modo-db-macros",
+  "modo-email",
+  "modo-jobs",
+  "modo-jobs-macros",
+  "modo-session",
+  "modo-auth",
+  "modo-tenant",
+  "modo-upload",
+  "modo-upload-macros",
+  "modo-cli",
+  "examples/*",
+]
 
 [workspace.package]
 license = "Apache-2.0"
 repository = "https://github.com/dmitrymomot/modo"
+
+[workspace.dependencies]
+modo = { path = "modo", version = "0.1" }
+modo-macros = { path = "modo-macros", version = "0.1" }
+modo-db = { path = "modo-db", version = "0.1" }
+modo-db-macros = { path = "modo-db-macros", version = "0.1" }
+modo-email = { path = "modo-email", version = "0.1" }
+modo-jobs = { path = "modo-jobs", version = "0.1" }
+modo-jobs-macros = { path = "modo-jobs-macros", version = "0.1" }
+modo-session = { path = "modo-session", version = "0.1" }
+modo-auth = { path = "modo-auth", version = "0.1" }
+modo-tenant = { path = "modo-tenant", version = "0.1" }
+modo-upload = { path = "modo-upload", version = "0.1" }
+modo-upload-macros = { path = "modo-upload-macros", version = "0.1" }

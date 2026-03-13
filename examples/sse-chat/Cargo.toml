@@ -5,9 +5,9 @@ edition = "2024"
 publish = false
 
 [dependencies]
-modo = { path = "../../modo", features = ["templates", "sse", "csrf", "static-embed"] }
-modo-db = { path = "../../modo-db", features = ["sqlite"] }
-modo-session = { path = "../../modo-session" }
+modo = { workspace = true, features = ["templates", "sse", "csrf", "static-embed"] }
+modo-db = { workspace = true, features = ["sqlite"] }
+modo-session.workspace = true
 chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }

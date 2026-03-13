@@ -12,8 +12,8 @@ sqlite = ["sea-orm/sqlx-sqlite"]
 postgres = ["sea-orm/sqlx-postgres"]
 
 [dependencies]
-modo = { path = "../modo", version = "0.1.0" }
-modo-db-macros = { path = "../modo-db-macros", version = "0.1.1" }
+modo.workspace = true
+modo-db-macros.workspace = true
 
 sea-orm = { version = "2.0.0-rc", features = [
     "runtime-tokio-native-tls",

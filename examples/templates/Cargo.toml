@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-modo = { path = "../../modo", features = ["templates"] }
+modo = { workspace = true, features = ["templates"] }
 chrono = "0.4"
 
 [lints.rust]

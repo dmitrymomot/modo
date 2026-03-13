@@ -12,8 +12,8 @@ local = []
 opendal = ["dep:opendal"]
 
 [dependencies]
-modo = { path = "../modo", version = "0.1.0" }
-modo-upload-macros = { path = "../modo-upload-macros", version = "0.1.0" }
+modo.workspace = true
+modo-upload-macros.workspace = true
 serde = { version = "1", features = ["derive"] }
 axum = { version = "0.8", features = ["multipart"] }
 async-trait = "0.1"

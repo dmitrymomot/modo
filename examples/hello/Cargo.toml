@@ -5,5 +5,5 @@ edition = "2024"
 publish = false
 
 [dependencies]
-modo = { path = "../../modo" }
+modo.workspace = true
 serde = { version = "1", features = ["derive"] }

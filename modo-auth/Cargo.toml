@@ -7,8 +7,8 @@ repository.workspace = true
 description = "Authentication framework for modo"
 
 [dependencies]
-modo = { path = "../modo", version = "0.1.0" }
-modo-session = { path = "../modo-session", version = "0.1.0" }
+modo.workspace = true
+modo-session.workspace = true
 argon2 = "0.5"
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -22,7 +22,7 @@ templates = ["modo/templates"]
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 serde_yaml_ng = "0.10"
-modo-db = { path = "../modo-db", version = "0.1.1" }
+modo-db.workspace = true
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["cookie-signed"] }
 tower = { version = "0.5", features = ["util"] }

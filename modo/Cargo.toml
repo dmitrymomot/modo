@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Ergonomic Rust web framework for small monolithic apps"
 
 [dependencies]
-modo-macros = { path = "../modo-macros", version = "0.1.0" }
+modo-macros.workspace = true
 
 # Core
 axum = "0.8"
