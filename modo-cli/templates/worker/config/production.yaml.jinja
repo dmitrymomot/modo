@@ -5,3 +5,7 @@ database:
   url: ${DATABASE_URL}
   max_connections: 20
   min_connections: 5
+jobs:
+  queues:
+    - name: default
+      concurrency: 4

@@ -9,6 +9,12 @@ database:
   url: ${DATABASE_URL}
   max_connections: 20
   min_connections: 5
+jobs:
+  queues:
+    - name: default
+      concurrency: 4
+    - name: email
+      concurrency: 2
 email:
   templates_path: templates/emails
   default_from_name: ${EMAIL_FROM_NAME}
