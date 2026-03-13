@@ -282,6 +282,10 @@ fn no_unrendered_placeholders() {
             if path.extension() == Some(std::ffi::OsStr::new("html")) {
                 continue;
             }
+            // Skip email templates — they contain runtime vars ({{name}}, etc.)
+            if path.components().any(|c| c.as_os_str() == "emails") {
+                continue;
+            }
             let content = fs::read_to_string(&path).unwrap_or_default();
             // Check for any unrendered MiniJinja placeholder (catches both {{ x }} and {{x}})
             assert!(
