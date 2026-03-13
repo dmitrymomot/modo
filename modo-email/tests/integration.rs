@@ -8,11 +8,21 @@ struct CapturingTransport {
     messages: Mutex<Vec<MailMessage>>,
 }
 
+/// A transport that always returns an error.
+struct FailingTransport;
+
 #[async_trait::async_trait]
 impl MailTransport for CapturingTransport {
     async fn send(&self, message: &MailMessage) -> Result<(), modo::Error> {
         self.messages.lock().unwrap().push(message.clone());
         Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl MailTransport for FailingTransport {
+    async fn send(&self, _message: &MailMessage) -> Result<(), modo::Error> {
+        Err(modo::Error::internal("connection refused"))
     }
 }
 
@@ -103,4 +113,212 @@ async fn end_to_end_locale_fallback() {
 
     let msgs = transport.messages.lock().unwrap();
     assert_eq!(msgs[0].subject, "Reset password");
+}
+
+#[tokio::test]
+async fn subject_appears_in_layout_title() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+
+    std::fs::write(
+        path.join("greeting.md"),
+        "---\nsubject: \"Hello {{name}}!\"\n---\nBody.",
+    )
+    .unwrap();
+
+    let transport = Arc::new(CapturingTransport {
+        messages: Mutex::new(Vec::new()),
+    });
+    let mailer = Mailer::new(
+        transport.clone(),
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap())),
+        SenderProfile {
+            from_name: "App".to_string(),
+            from_email: "app@test.com".to_string(),
+            reply_to: None,
+        },
+        Arc::new(LayoutEngine::new(path.to_str().unwrap())),
+    );
+
+    mailer
+        .send(&SendEmail::new("greeting", "user@example.com").var("name", "Alice"))
+        .await
+        .unwrap();
+
+    let msgs = transport.messages.lock().unwrap();
+    assert!(
+        msgs[0].html.contains("<title>Hello Alice!</title>"),
+        "substituted subject should appear in layout <title>"
+    );
+}
+
+#[tokio::test]
+async fn context_vars_flow_to_layout() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+
+    std::fs::write(
+        path.join("welcome2.md"),
+        "---\nsubject: \"Welcome\"\n---\nHello!",
+    )
+    .unwrap();
+
+    let transport = Arc::new(CapturingTransport {
+        messages: Mutex::new(Vec::new()),
+    });
+    let mailer = Mailer::new(
+        transport.clone(),
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap())),
+        SenderProfile {
+            from_name: "App".to_string(),
+            from_email: "app@test.com".to_string(),
+            reply_to: None,
+        },
+        Arc::new(LayoutEngine::new(path.to_str().unwrap())),
+    );
+
+    mailer
+        .send(
+            &SendEmail::new("welcome2", "user@example.com")
+                .var("logo_url", "https://cdn.example.com/logo.png")
+                .var("product_name", "Acme")
+                .var("footer_text", "Copyright 2026"),
+        )
+        .await
+        .unwrap();
+
+    let msgs = transport.messages.lock().unwrap();
+    assert!(
+        msgs[0].html.contains("<img"),
+        "logo_url should produce <img> tag"
+    );
+    assert!(
+        msgs[0].html.contains("cdn.example.com/logo.png"),
+        "logo_url value should appear in img src"
+    );
+    assert!(
+        msgs[0].html.contains("Copyright 2026"),
+        "footer_text should flow to layout footer"
+    );
+}
+
+#[tokio::test]
+async fn custom_layout_from_filesystem() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+
+    // Create a custom layout file.
+    std::fs::create_dir_all(path.join("layouts")).unwrap();
+    std::fs::write(
+        path.join("layouts/branded.html"),
+        "<html><title>{{subject}}</title><body><main>{{content}}</main>\
+         <footer>{{footer_text | default(value=\"\")}}</footer></body></html>",
+    )
+    .unwrap();
+
+    std::fs::write(
+        path.join("hi.md"),
+        "---\nsubject: \"Hi\"\nlayout: branded\n---\nBody {{name}}",
+    )
+    .unwrap();
+
+    let transport = Arc::new(CapturingTransport {
+        messages: Mutex::new(Vec::new()),
+    });
+    let mailer = Mailer::new(
+        transport.clone(),
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap())),
+        SenderProfile {
+            from_name: "App".to_string(),
+            from_email: "app@test.com".to_string(),
+            reply_to: None,
+        },
+        Arc::new(LayoutEngine::new(path.to_str().unwrap())),
+    );
+
+    mailer
+        .send(&SendEmail::new("hi", "user@example.com").var("name", "Bob"))
+        .await
+        .unwrap();
+
+    let msgs = transport.messages.lock().unwrap();
+    assert!(
+        msgs[0].html.contains("<main>"),
+        "custom layout should be used"
+    );
+    assert!(
+        !msgs[0].html.contains("max-width"),
+        "default layout should NOT be used"
+    );
+}
+
+#[tokio::test]
+async fn transport_error_propagates() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+
+    std::fs::write(path.join("err.md"), "---\nsubject: \"Test\"\n---\nBody.").unwrap();
+
+    let transport: Arc<dyn MailTransport> = Arc::new(FailingTransport);
+    let mailer = Mailer::new(
+        transport,
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap())),
+        SenderProfile {
+            from_name: "App".to_string(),
+            from_email: "app@test.com".to_string(),
+            reply_to: None,
+        },
+        Arc::new(LayoutEngine::new(path.to_str().unwrap())),
+    );
+
+    let result = mailer
+        .send(&SendEmail::new("err", "user@example.com"))
+        .await;
+    assert!(result.is_err(), "transport error should propagate");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("connection refused"),
+        "error should contain transport message, got: {err_msg}"
+    );
+}
+
+#[tokio::test]
+async fn multiple_recipients_in_rendered_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path();
+
+    std::fs::write(
+        path.join("notify.md"),
+        "---\nsubject: \"Notify\"\n---\nHello team.",
+    )
+    .unwrap();
+
+    let transport = Arc::new(CapturingTransport {
+        messages: Mutex::new(Vec::new()),
+    });
+    let mailer = Mailer::new(
+        transport.clone(),
+        Arc::new(FilesystemProvider::new(path.to_str().unwrap())),
+        SenderProfile {
+            from_name: "App".to_string(),
+            from_email: "app@test.com".to_string(),
+            reply_to: None,
+        },
+        Arc::new(LayoutEngine::new(path.to_str().unwrap())),
+    );
+
+    mailer
+        .send(
+            &SendEmail::new("notify", "a@t.com")
+                .to("b@t.com")
+                .to("c@t.com"),
+        )
+        .await
+        .unwrap();
+
+    let msgs = transport.messages.lock().unwrap();
+    assert_eq!(msgs[0].to.len(), 3);
+    assert!(msgs[0].to.contains(&"a@t.com".to_string()));
+    assert!(msgs[0].to.contains(&"b@t.com".to_string()));
+    assert!(msgs[0].to.contains(&"c@t.com".to_string()));
 }

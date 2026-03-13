@@ -25,3 +25,4 @@ reqwest = { version = "0.12", features = ["json"], optional = true }
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 tempfile = "3"
+mailin-embedded = "0.8"
