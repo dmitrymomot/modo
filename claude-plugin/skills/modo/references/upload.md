@@ -75,7 +75,7 @@ call `.validate()` on the wrapper to run additional field-level rules.
 
 ```rust
 use modo::JsonResult;
-use modo::extractors::service::Service;
+use modo::Service;
 use modo_upload::{FileStorage, MultipartForm};
 
 use crate::types::ProfileForm;
@@ -364,7 +364,7 @@ The upload example shows the complete pattern combining `#[derive(FromMultipart)
 
 ```rust
 use modo::JsonResult;
-use modo::extractors::service::Service;
+use modo::Service;
 use modo_upload::{FileStorage, MultipartForm, UploadedFile, FromMultipart};
 
 #[derive(FromMultipart, modo::Sanitize, modo::Validate)]

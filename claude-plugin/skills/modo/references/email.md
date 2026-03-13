@@ -392,7 +392,7 @@ network I/O.
 use modo_email::{mailer, EmailConfig, SendEmail, SendEmailPayload};
 use modo_jobs::JobQueue;
 use modo::HandlerResult;
-use modo::extractors::service::Service;
+use modo::Service;
 
 // In main — register mailer on the JOBS builder, not on app:
 #[modo::main]
@@ -425,7 +425,7 @@ async fn main(
 use modo_email::{Mailer, SendEmail, SendEmailPayload};
 use modo_jobs::job;
 use modo::HandlerResult;
-use modo::extractors::service::Service;
+use modo::Service;
 
 #[job(queue = "mailer", max_attempts = 3, timeout = "30s")]
 async fn send_email(
@@ -470,7 +470,7 @@ jobs builder and add the `Db` extractor to the job:
 use modo_email::{Mailer, SendEmail, SendEmailPayload, SenderProfile};
 use modo_jobs::job;
 use modo::HandlerResult;
-use modo::extractors::service::Service;
+use modo::Service;
 use modo_db::extractor::Db;
 
 #[job(queue = "mailer", max_attempts = 3, timeout = "30s")]

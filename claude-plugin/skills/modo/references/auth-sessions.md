@@ -161,7 +161,7 @@ are invalid, which cannot happen with the shipped values.
 Register `PasswordHasher` as a service, then extract it in handlers with `Service<PasswordHasher>`.
 
 ```rust
-use modo::extractors::service::Service;
+use modo::Service;
 use modo_auth::PasswordHasher;
 
 app.service(PasswordHasher::default())

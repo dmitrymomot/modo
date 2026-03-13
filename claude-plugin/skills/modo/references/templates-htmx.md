@@ -493,7 +493,7 @@ pub struct CsrfToken(pub String);
 Extract the raw token in a handler:
 
 ```rust
-use modo::csrf::CsrfToken;
+use modo::CsrfToken;
 
 #[modo::handler(GET, "/form")]
 async fn show_form(
@@ -804,12 +804,12 @@ use my_templates::functions as _;
 
 ## docs.rs Quick Reference
 
-- `TemplateEngine` — `modo::templates::TemplateEngine`
-- `TemplateConfig` — `modo::templates::TemplateConfig`
-- `TemplateContext` — `modo::templates::TemplateContext`
+- `TemplateEngine` — `modo::TemplateEngine`
+- `TemplateConfig` — `modo::TemplateConfig`
+- `TemplateContext` — `modo::TemplateContext`
 - `View` — `modo::templates::View`
-- `ViewRender` — `modo::templates::ViewRender`
-- `ViewRenderer` — `modo::templates::ViewRenderer`
+- `ViewRender` — `modo::ViewRender`
+- `ViewRenderer` — `modo::ViewRenderer`
 - `RenderLayer` — `modo::templates::RenderLayer`
 - `ContextLayer` — `modo::templates::ContextLayer`
 - `TemplateFunctionEntry` — `modo::templates::TemplateFunctionEntry`
@@ -823,9 +823,9 @@ use my_templates::functions as _;
 - `SseStreamExt` — `modo::sse::SseStreamExt`
 - `LastEventId` — `modo::sse::LastEventId`
 - `SseConfig` — `modo::sse::SseConfig`
-- `CsrfToken` — `modo::csrf::CsrfToken`
-- `CsrfConfig` — `modo::csrf::CsrfConfig`
+- `CsrfToken` — `modo::CsrfToken`
+- `CsrfConfig` — `modo::CsrfConfig`
 - `csrf_protection` — `modo::csrf::csrf_protection`
-- `I18n` — `modo::i18n::I18n`
-- `I18nConfig` — `modo::i18n::I18nConfig`
+- `I18n` — `modo::I18n`
+- `I18nConfig` — `modo::I18nConfig`
 - `TranslationStore` — `modo::i18n::TranslationStore`

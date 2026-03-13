@@ -242,12 +242,12 @@ Fields: `remaining: u32`, `limit: u32`, `reset_secs: u64`.
 
 ### Service Extractor
 
-`modo::extractors::Service<T>` retrieves a registered service from the `ServiceRegistry` by
+`modo::Service<T>` retrieves a registered service from the `ServiceRegistry` by
 type. Returns `500 Internal Server Error` if the service is not registered. The inner `Arc<T>`
 is accessible via `Deref` or by destructuring:
 
 ```rust
-use modo::extractors::Service;
+use modo::Service;
 
 #[modo::handler(GET, "/status")]
 async fn status(Service(cache): Service<MyCache>) -> String {
@@ -546,8 +546,8 @@ Use the `static_assets` argument in `#[modo::main]` to embed a directory at comp
 ```rust
 #[modo::main(static_assets = "static/")]
 async fn main(
-    app: modo::app::AppBuilder,
-    config: modo::config::AppConfig,
+    app: modo::AppBuilder,
+    config: modo::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     app.config(config).run().await
 }
@@ -598,8 +598,8 @@ For embedded assets in production:
 ```rust
 #[modo::main(static_assets = "static/")]
 async fn main(
-    app: modo::app::AppBuilder,
-    config: modo::config::AppConfig,
+    app: modo::AppBuilder,
+    config: modo::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     app.config(config).run().await
 }
@@ -675,9 +675,9 @@ mod api_v1 {
 
 | Type | Crate path |
 |------|-----------|
-| `AppBuilder` | `modo::app::AppBuilder` |
-| `AppState` | `modo::app::AppState` |
-| `ServiceRegistry` | `modo::app::ServiceRegistry` |
+| `AppBuilder` | `modo::AppBuilder` |
+| `AppState` | `modo::AppState` |
+| `ServiceRegistry` | `modo::ServiceRegistry` |
 | `CorsConfig` | `modo::cors::CorsConfig` |
 | `CorsOrigins` | `modo::cors::CorsOrigins` |
 | `RateLimitConfig` | `modo::config::RateLimitConfig` |
@@ -688,7 +688,7 @@ mod api_v1 {
 | `StaticConfig` | `modo::static_files::StaticConfig` |
 | `ClientIp` | `modo::middleware::ClientIp` |
 | `RequestId` | `modo::RequestId` |
-| `Service<T>` | `modo::extractors::Service` |
+| `Service<T>` | `modo::Service` |
 | `Json<T>` | `modo::Json` |
 | `Form<T>` | `modo::extractors::Form` |
 | `HandlerResult<T>` | `modo::HandlerResult` |

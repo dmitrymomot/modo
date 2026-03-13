@@ -427,12 +427,12 @@ server:
 
 | Type | Module path | docs.rs |
 |---|---|---|
-| `AppConfig` | `modo::config::AppConfig` | https://docs.rs/modo |
-| `ServerConfig` | `modo::config::ServerConfig` | https://docs.rs/modo |
-| `HttpConfig` | `modo::config::HttpConfig` | https://docs.rs/modo |
-| `SecurityHeadersConfig` | `modo::config::SecurityHeadersConfig` | https://docs.rs/modo |
-| `RateLimitConfig` | `modo::config::RateLimitConfig` | https://docs.rs/modo |
-| `TrailingSlash` | `modo::config::TrailingSlash` | https://docs.rs/modo |
+| `AppConfig` | `modo::AppConfig` | https://docs.rs/modo |
+| `ServerConfig` | `modo::ServerConfig` | https://docs.rs/modo |
+| `HttpConfig` | `modo::HttpConfig` | https://docs.rs/modo |
+| `SecurityHeadersConfig` | `modo::SecurityHeadersConfig` | https://docs.rs/modo |
+| `RateLimitConfig` | `modo::RateLimitConfig` | https://docs.rs/modo |
+| `TrailingSlash` | `modo::TrailingSlash` | https://docs.rs/modo |
 | `Environment` | `modo::config::Environment` | https://docs.rs/modo |
 | `ConfigError` | `modo::config::ConfigError` | https://docs.rs/modo |
 | `CookieConfig` | `modo::cookies::CookieConfig` | https://docs.rs/modo |

@@ -609,7 +609,7 @@ app.managed_service(MainDb(main_db))
    .await
 ```
 
-Extract the secondary database using `modo::extractors::Service<AnalyticsDb>` in handlers.
+Extract the secondary database using `modo::Service<AnalyticsDb>` in handlers.
 
 ### Response mapping
 

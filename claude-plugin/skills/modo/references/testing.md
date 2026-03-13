@@ -163,8 +163,8 @@ or anything that reads `ServiceRegistry`), construct a minimal `AppState` direct
 ```rust
 use axum::Router;
 use axum::routing::get;
-use modo::app::{AppState, ServiceRegistry};
-use modo::config::ServerConfig;
+use modo::{AppState, ServiceRegistry};
+use modo::ServerConfig;
 
 fn build_app(store: SessionStore) -> Router {
     let services = ServiceRegistry::new()

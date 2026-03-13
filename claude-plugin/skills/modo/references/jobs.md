@@ -68,7 +68,7 @@ async fn send_welcome(payload: WelcomePayload) -> HandlerResult<()> {
 ```rust
 use modo_jobs::job;
 use modo::HandlerResult;
-use modo::extractors::service::Service;
+use modo::Service;
 
 #[job(queue = "mailer", timeout = "1m")]
 async fn send_report(
