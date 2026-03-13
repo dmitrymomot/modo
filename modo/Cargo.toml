@@ -1,6 +1,6 @@
 [package]
 name = "modo"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license.workspace = true
 repository.workspace = true
@@ -15,8 +15,13 @@ axum-extra = { version = "0.10", features = ["cookie-signed", "cookie-private"] 
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = [
-    "trace", "cors", "timeout", "limit",
-    "compression-full", "catch-panic", "sensitive-headers"
+  "trace",
+  "cors",
+  "timeout",
+  "limit",
+  "compression-full",
+  "catch-panic",
+  "sensitive-headers",
 ] }
 dashmap = "6"
 serde = { version = "1", features = ["derive"] }
