@@ -10,7 +10,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! modo = { path = "../../modo", features = ["sse"] }
+//! modo = { version = "0.1", features = ["sse"] }
 //! ```
 //!
 //! ## Stream from a broadcast channel

@@ -19,10 +19,10 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-modo-email = { path = "../modo-email" }
+modo-email = "0.1"
 
 # For Resend instead of (or alongside) SMTP:
-# modo-email = { path = "../modo-email", features = ["resend"] }
+# modo-email = { version = "0.1", features = ["resend"] }
 ```
 
 ### Configuration
@@ -324,13 +324,13 @@ Both features can be enabled simultaneously. The active transport is selected by
 
 ```toml
 # SMTP only (default):
-modo-email = { path = "../modo-email" }
+modo-email = "0.1"
 
 # Resend only:
-modo-email = { path = "../modo-email", default-features = false, features = ["resend"] }
+modo-email = { version = "0.1", default-features = false, features = ["resend"] }
 
 # Both available:
-modo-email = { path = "../modo-email", features = ["resend"] }
+modo-email = { version = "0.1", features = ["resend"] }
 ```
 
 ### Resend Configuration
