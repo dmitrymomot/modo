@@ -1,4 +1,4 @@
-use modo::templates::ViewRenderer;
+use modo::ViewRenderer;
 use modo_session::SessionManager;
 
 use crate::types::ROOMS;

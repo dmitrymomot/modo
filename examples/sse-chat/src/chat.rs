@@ -3,9 +3,8 @@
 mod chat {
     use modo::handler;
 
-    use modo::extractors::service::Service;
     use modo::sse::{Sse, SseEvent, SseResponse, SseStreamExt};
-    use modo::templates::ViewRenderer;
+    use modo::{Service, ViewRenderer};
     use modo_db::Db;
     use modo_session::SessionManager;
 

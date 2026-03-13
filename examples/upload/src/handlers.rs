@@ -1,5 +1,5 @@
 use modo::JsonResult;
-use modo::extractors::service::Service;
+use modo::Service;
 use modo_upload::{FileStorage, MultipartForm};
 
 use crate::types::ProfileForm;
