@@ -581,8 +581,8 @@ The i18n middleware resolves locale per-request using this priority chain:
 4. `Accept-Language` header
 5. Default language from config
 
-When the query parameter resolves a new language and no cookie was present, the middleware
-sets a `lang` cookie (1-year max-age) to persist the choice.
+When the query parameter resolves a language that differs from the current cookie value, the middleware
+sets (or updates) a `lang` cookie (1-year max-age) to persist the choice.
 
 ### `I18n` Extractor
 
@@ -642,6 +642,28 @@ value from the template context (injected by the i18n middleware via `TemplateCo
 
 The `count` kwarg triggers plural form selection (`zero` / `one` / `other`) and is also
 available for `{count}` interpolation in the translation string.
+
+### `t!()` in Rust Handlers
+
+The `t!()` proc macro (re-exported as `modo::t!`, gated on `i18n` feature) provides
+a concise syntax for translation lookups in handler code:
+
+```rust
+use modo::t;
+
+// Simple key lookup — calls i18n.t("key", &[])
+let title = t!(i18n, "page.title");
+
+// With variable interpolation — calls i18n.t("greeting", &[("name", &name.to_string())])
+let msg = t!(i18n, "greeting", name = user.name);
+
+// Plural form — presence of `count =` switches to i18n.t_plural()
+let label = t!(i18n, "items_count", count = items.len());
+```
+
+The macro accepts an `I18n` extractor expression, a string key, and optional
+`name = expr` pairs. When a `count` named argument is present, it calls
+`i18n.t_plural()` instead of `i18n.t()`.
 
 ---
 

@@ -209,8 +209,8 @@ use `#[modo_db::migration]`:
 
 ```rust
 #[modo_db::migration(version = 1, description = "seed default roles")]
-async fn seed_roles(db: &impl modo_db::sea_orm::ConnectionTrait)
-    -> Result<(), modo_db::sea_orm::DbErr>
+async fn seed_roles(db: &sea_orm::DatabaseConnection)
+    -> Result<(), modo::Error>
 {
     db.execute_unprepared(
         "INSERT INTO roles (id, name) VALUES ('admin', 'Administrator')"
@@ -232,12 +232,12 @@ async fn seed_roles(db: &impl modo_db::sea_orm::ConnectionTrait)
 |----------|-------------|
 | `group = "<name>"` | Assigns migration to a named group (default: `"default"`) |
 
-The annotated function must be `async`, accept a single `&impl ConnectionTrait` parameter, and
-return `Result<(), DbErr>`. The macro keeps the function as-is and submits a
+The annotated function must be `async`, accept a single `&sea_orm::DatabaseConnection` parameter, and
+return `Result<(), modo::Error>`. The macro keeps the function as-is and submits a
 `MigrationRegistration` to `inventory`.
 
 Migrations are version-ordered and deduplicated at startup. Duplicate version numbers across
-registrations are a compile-time-detectable runtime error (detected before any migration runs).
+registrations are a runtime error (detected before any migration runs).
 Each executed migration is recorded in `_modo_migrations` with its version, description, and
 timestamp.
 
@@ -338,6 +338,7 @@ async fn get_todo(Db(db): Db, id: String) -> modo::JsonResult<TodoResponse> {
 ```rust
 use modo_db::sea_orm::{ActiveModelTrait, EntityTrait, Set};
 
+// Illustrative example — not from the examples directory
 #[modo::handler(PATCH, "/todos/{id}")]
 async fn update_todo(
     Db(db): Db,
@@ -551,8 +552,8 @@ pub struct Event {
 
 // Migration in the "analytics" group
 #[modo_db::migration(version = 1, description = "seed event types", group = "analytics")]
-async fn seed_event_types(db: &impl modo_db::sea_orm::ConnectionTrait)
-    -> Result<(), modo_db::sea_orm::DbErr>
+async fn seed_event_types(db: &sea_orm::DatabaseConnection)
+    -> Result<(), modo::Error>
 {
     // ...
     Ok(())
@@ -563,7 +564,7 @@ async fn main(
     app: modo::app::AppBuilder,
     config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Main database — syncs "default" group entities and migrations
+    // Main database — syncs all registered entities and runs pending migrations
     let db = modo_db::connect(&config.database).await?;
     modo_db::sync_and_migrate(&db).await?;
 

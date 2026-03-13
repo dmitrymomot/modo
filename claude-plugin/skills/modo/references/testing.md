@@ -36,7 +36,6 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test -p modo --features templates
 cargo test -p modo --features i18n
 cargo test -p modo --features sse
-cargo test -p modo --features csrf
 ```
 
 ### Critical difference: `just test` vs `just lint`
@@ -399,7 +398,6 @@ These tests are excluded from `just test` (no `--all-features`). Run them explic
 cargo test -p modo --features templates
 cargo test -p modo --features i18n
 cargo test -p modo --features sse
-cargo test -p modo --features csrf
 ```
 
 **Feature-gated test files in the modo crate:**

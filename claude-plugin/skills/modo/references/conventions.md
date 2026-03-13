@@ -15,7 +15,7 @@ The `modo` crate is the umbrella re-export that application code depends on. It 
 Rules:
 - `mod.rs` — only `mod` declarations and `pub use` re-exports
 - `handlers.rs` (or `handlers/`) — all `#[handler]`-annotated functions
-- `views.rs` (or `views/`) — all `#[view]`-annotated functions and template helpers
+- `views.rs` (or `views/`) — all `#[view]`-annotated structs and template helpers
 - Tasks, jobs, and other domain code each go in their own files
 
 ```
@@ -23,7 +23,7 @@ src/
   users/
     mod.rs        ← ONLY: mod handlers; mod views; pub use ...
     handlers.rs   ← all #[handler] fns for this module
-    views.rs      ← all #[view] fns for this module
+    views.rs      ← all #[view] structs for this module
     tasks.rs      ← background task logic
 ```
 
@@ -177,12 +177,12 @@ CORS
                       Security Headers
                         Error Handler
                           Rate Limiter
-                            User Global Layers  ← AppBuilder::layer()
+                            i18n
                               Template Context
-                                i18n
-                                  Module Middleware
-                                    Handler Middleware
-                                      Render Layer (innermost)
+                                User Global Layers  ← AppBuilder::layer()
+                                  Render Layer
+                                    Module Middleware
+                                      Handler Middleware (innermost)
 ```
 
 Source: `modo/src/app.rs`, lines 545–552.
@@ -191,7 +191,7 @@ Source: `modo/src/app.rs`, lines 545–552.
 
 ```rust
 #[modo::main]
-async fn main(app: AppBuilder) {
+async fn main(app: AppBuilder, config: AppConfig) {
     app
         // Register a service accessible via Service<T> extractor
         .service(my_db_pool)
@@ -239,7 +239,7 @@ async fn get_user(id: String, /* ... */) -> JsonResult<UserResponse> { /* ... */
 
 ### Stacking Rules
 
-- Multiple middleware on the same scope are applied **last-declared = innermost**. This mirrors axum's `.layer()` semantics where the last call wraps outermost.
+- Multiple middleware on the same scope are applied **last-declared = innermost**. Note: this is the inverse of axum's raw `.layer()` where the last call wraps outermost. The macro achieves this by reversing the declaration order before applying layers.
 - `AppBuilder::layer()` inserts global layers between the framework infrastructure stack and the template/module layers. Multiple calls to `.layer()` stack the same way: last call = outermost of the user layers.
 - Template layers (`RenderLayer`, `ContextLayer`) are auto-registered when `TemplateEngine` is present as a service — no manual `.layer()` call needed.
 
@@ -275,13 +275,14 @@ Key points:
 Return `ViewResult<>` for server-rendered pages:
 
 ```rust
-#[modo::handler(GET "/dashboard")]
+#[modo::handler(GET, "/dashboard")]
 async fn dashboard(
+    view: ViewRenderer,
     Service(db): Service<DatabaseService>,
 ) -> ViewResult {
     let data = db.fetch_summary().await
         .map_err(|e| Error::internal(e.to_string()))?;
-    view!("dashboard.html", { "summary": data })
+    view.render(DashboardPage { summary: data })
 }
 ```
 

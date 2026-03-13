@@ -367,7 +367,7 @@ This lets you toggle behaviour programmatically (e.g., enable maintenance mode f
 use modo::{Service, handler};
 use modo::cookies::CookieConfig;
 
-#[handler]
+#[handler(GET, "/config")]
 async fn my_handler(Service(cookie_cfg): Service<CookieConfig>) {
     // use cookie_cfg.domain, cookie_cfg.secure, etc.
 }
@@ -380,6 +380,7 @@ You can extend `AppConfig` by defining your own struct and adding it alongside t
 ```rust
 #[derive(Deserialize, Default)]
 struct MyConfig {
+    #[serde(flatten)]
     pub app: AppConfig,
     pub feature_flags: FeatureFlagsConfig,
 }
@@ -402,7 +403,7 @@ The `feature_flags` key in `config/development.yaml` then deserializes into `Fea
 
 **Empty `secret_key` generates a random key per restart.** A warning is logged at startup. Sessions and signed cookies from previous processes will be invalid after restart. Always set a stable `secret_key` in production.
 
-**`MODO_ENV` is not loaded from `.env` files.** The `load()` function calls `dotenvy::dotenv()` first, so `.env` values are available for `${VAR}` interpolation in the YAML. But `MODO_ENV` itself must already be set in the process environment before `load()` runs — it is read before dotenv is applied when constructing the file path.
+**`MODO_ENV` and dotenvy ordering.** `load()` calls `dotenvy::dotenv()` first, so `.env` values — including `MODO_ENV` — are available for file path selection and `${VAR}` interpolation in the YAML. However, `load_for_env()` does NOT call dotenvy — if you use it directly, only process-level env vars are available for `${VAR}` interpolation.
 
 **Config directory must exist relative to the process working directory.** When running with `cargo run`, the working directory is the workspace root. For tests run with `cargo test`, the working directory may differ. Use `load_or_default` in test contexts or set up the `config/` directory appropriately.
 

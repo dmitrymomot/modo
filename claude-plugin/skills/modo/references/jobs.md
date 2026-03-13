@@ -345,11 +345,10 @@ The cron expression uses six fields: `second minute hour day month weekday`.
 - If a cron job fails five consecutive times, a warning is logged.
 - Cron tasks respect the `CancellationToken` and stop cleanly on shutdown.
 
-**Cron jobs do not support `Service<T>` or `Db` parameter injection directly in the function
-signature** when they have no payload parameter — but services registered via `.service()` on
-the builder are available through `ctx.service::<T>()` if you use the `JobContext` API
-manually. In practice, use a no-argument cron function and call `ctx.service()` inside the
-body if service access is needed.
+**Cron jobs support the same parameter injection as regular jobs** (`Service<T>`, `Db`, etc.).
+The macro generates the same extraction code for all job types. The cron runner creates a fresh
+`JobContext` with all registered services for each execution, so `Service<T>` and `Db` work
+identically in cron job function signatures.
 
 ---
 

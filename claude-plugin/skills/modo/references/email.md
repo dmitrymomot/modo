@@ -565,7 +565,7 @@ user-supplied data directly into a layout variable (other than `content`) you ar
 responsible for escaping it.
 
 **`TemplateProvider::get` is called synchronously.** `FilesystemProvider` performs
-blocking file I/O inside `MailTransport::send`, which is async. This is acceptable
+blocking I/O inside `Mailer::send` (via `self.render()`, which reads template files synchronously). This is acceptable
 for most workloads, but if templates are loaded from a remote store, implement
 blocking access with a cache rather than making async calls inside `get`.
 

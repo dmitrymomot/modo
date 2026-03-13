@@ -165,12 +165,18 @@ async fn list_items(Query(pagination): Query<Pagination>) -> String {
 
 ### JSON Body
 
-Use `modo::Json<T>` (not `modo::axum::Json`). `modo::Json` auto-sanitizes if `#[derive(Sanitize)]`
-is present on `T`, and exposes `.validate()` if `#[derive(Validate)]` is present:
+Two JSON extractors are available:
+
+- `modo::Json<T>` (re-export of `axum::Json<T>`) — plain JSON extraction/response with no sanitization or validation.
+- `modo::extractors::Json<T>` — auto-sanitizes if `#[derive(Sanitize)]` is present on `T`, and exposes `.validate()` if `#[derive(Validate)]` is present.
+
+Use `modo::extractors::Json<T>` when you need sanitization and validation:
 
 ```rust
+use modo::extractors::Json;
+
 #[modo::handler(POST, "/users")]
-async fn create_user(body: modo::Json<CreateUser>) -> modo::JsonResult<User> {
+async fn create_user(body: Json<CreateUser>) -> modo::JsonResult<User> {
     body.validate()?;
     // body.0 gives the inner T; or use Deref: body.email
     Ok(modo::Json(User { /* ... */ }))
@@ -306,7 +312,7 @@ email: String,
 ### `#[derive(Sanitize)]`
 
 Generates `impl modo::sanitize::Sanitize` and auto-registers it. Sanitization runs
-automatically when data is extracted via `modo::Json<T>` or `modo::extractors::Form<T>`.
+automatically when data is extracted via `modo::extractors::Json<T>` or `modo::extractors::Form<T>`.
 
 Field attribute: `#[clean(rule1, rule2, ...)]`
 
@@ -320,7 +326,7 @@ Available rules:
 | `strip_html_tags` | Remove HTML tags |
 | `collapse_whitespace` | Replace multiple spaces with one |
 | `truncate = N` | Truncate to N characters |
-| `normalize_email` | Lowercase + trim the email |
+| `normalize_email` | Lowercase + strip `+tag` from local part (e.g. `user+tag@ex.com` → `user@ex.com`) |
 | `custom = "fn_path"` | `fn(String) -> String` |
 
 ```rust
@@ -359,7 +365,7 @@ async fn protected() -> &'static str {
     "secret"
 }
 
-// Multiple middleware, applied innermost-first
+// Multiple middleware, applied outermost-first (last-declared = innermost)
 #[modo::handler(POST, "/admin/action")]
 #[middleware(require_auth, require_role("admin"))]
 async fn admin_action() -> &'static str {
@@ -524,7 +530,7 @@ Configure in YAML (defaults shown):
 
 ```yaml
 server:
-  static:
+  static_files:
     dir: "static"           # filesystem directory to serve
     prefix: "/static"       # URL prefix
     cache_control: null     # optional override, default: "max-age=3600"
@@ -560,7 +566,7 @@ default folder when `static_assets` is omitted is `"static/"`.
 The embedded backend adds SHA-256-based ETags and returns `304 Not Modified` when
 `If-None-Match` matches. Cache-Control defaults to `max-age=31536000, immutable`.
 
-The URL prefix under which static files are served comes from `server.static.prefix` in the
+The URL prefix under which static files are served comes from `server.static_files.prefix` in the
 config (default `/static`).
 
 ---
@@ -640,8 +646,8 @@ mod api_v1 {
 
 ## Gotchas
 
-- **`modo::Json` vs `modo::axum::Json`**: Always use `modo::Json` for both request extraction
-  and response bodies. `modo::axum::Json` bypasses auto-sanitization.
+- **`modo::Json` vs `modo::extractors::Json`**: `modo::Json` is `axum::Json` — it does NOT auto-sanitize.
+  Use `modo::extractors::Json<T>` for auto-sanitization. `modo::extractors::Form<T>` similarly auto-sanitizes forms.
 
 - **Path param partial extraction**: Declare only the params you need in the function
   signature. The macro generates a struct with all params; missing ones default to `String`
@@ -659,7 +665,7 @@ mod api_v1 {
   compile error if the `static-embed` feature is not enabled.
 
 - **`#[derive(Sanitize)]` auto-registers globally**: The macro submits a `SanitizerRegistration`
-  to `inventory`. This means sanitization applies automatically via `modo::Json` and
+  to `inventory`. This means sanitization applies automatically via `modo::extractors::Json` and
   `modo::extractors::Form` without any explicit call in the handler.
 
 - **`TrailingSlash::Strip`/`Add` issues 301 redirects**: This means POST bodies are lost on
@@ -685,11 +691,12 @@ mod api_v1 {
 | `SecurityHeadersConfig` | `modo::config::SecurityHeadersConfig` |
 | `TrailingSlash` | `modo::config::TrailingSlash` |
 | `HttpConfig` | `modo::config::HttpConfig` |
-| `StaticConfig` | `modo::static_files::StaticConfig` |
+| `StaticConfig` | `modo::static_files::StaticConfig` (`pub(crate)` — access via `AppConfig.server.static_files`) |
 | `ClientIp` | `modo::middleware::ClientIp` |
 | `RequestId` | `modo::RequestId` |
 | `Service<T>` | `modo::Service` |
-| `Json<T>` | `modo::Json` |
+| `Json<T>` (plain) | `modo::Json` |
+| `Json<T>` (sanitizing) | `modo::extractors::Json` |
 | `Form<T>` | `modo::extractors::Form` |
 | `HandlerResult<T>` | `modo::HandlerResult` |
 | `JsonResult<T>` | `modo::JsonResult` |
