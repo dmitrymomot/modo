@@ -6,7 +6,9 @@ description: >
     database entities, migrations, jobs, email, sessions, authentication,
     templates, HTMX, SSE, uploads, multi-tenancy, configuration, or testing
     patterns. Also use when the user references modo macros like #[handler],
-    #[module], #[main], #[entity], #[job], #[view], or FromMultipart.
+    #[module], #[main], #[entity], #[job], #[view], #[error_handler],
+    #[template_function], #[template_filter], #[modo_db::migration], t!(),
+    #[derive(Sanitize)], #[derive(Validate)], or #[derive(FromMultipart)].
 ---
 
 ## Hard Rules
@@ -32,6 +34,10 @@ token logic. Only reach for a manual or external approach when no built-in
 equivalent exists, and call that choice out explicitly in the plan.
 
 ## Assumed Starting Point
+
+> **Version target:** These reference docs are written against **modo 0.1.x**
+> and **SeaORM v2 RC**. If the project uses a different version, verify API
+> signatures against the actual source before generating code.
 
 The project has been scaffolded by `modo-cli` with all required feature modules
 enabled (database, jobs, email, sessions, uploads, templates, etc.). The
