@@ -27,20 +27,20 @@ async fn main(
         config.core.cookies.clone(),
     );
 
-    let jobs = modo_jobs::new(&jobs_db, &config.jobs)
-        .service(db.clone())
-        .run()
-        .await?;
-
     let storage = modo_upload::storage(&config.upload)?;
     let email = modo_email::mailer(&config.email)?;
+
+    let jobs = modo_jobs::new(&jobs_db, &config.jobs)
+        .service(db.clone())
+        .service(email)
+        .run()
+        .await?;
 
     app.config(config.core)
         .managed_service(db)
         .managed_service(jobs)
         .service(session_store.clone())
         .service(storage)
-        .service(email)
         .layer(modo_session::layer(session_store))
         .run()
         .await
