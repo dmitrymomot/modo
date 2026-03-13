@@ -101,3 +101,62 @@ fn write_dir(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use minijinja::Environment;
+
+    #[test]
+    fn scaffold_preserves_email_runtime_vars() {
+        let env = Environment::new();
+        let source = include_str!("../templates/web/templates/emails/welcome.md.jinja");
+        let rendered = env
+            .render_str(
+                source,
+                minijinja::context! {
+                    project_name => "my_app",
+                    db_driver => "postgres",
+                    s3 => false,
+                },
+            )
+            .unwrap();
+
+        assert!(
+            rendered.contains("{{name}}"),
+            "runtime var {{{{name}}}} must survive scaffolding"
+        );
+        assert!(
+            rendered.contains("{{dashboard_url}}"),
+            "runtime var {{{{dashboard_url}}}} must survive scaffolding"
+        );
+        assert!(
+            rendered.contains("{{project_name}}"),
+            "runtime var {{{{project_name}}}} must survive scaffolding"
+        );
+    }
+
+    #[test]
+    fn scaffold_preserves_email_layout_runtime_vars() {
+        let env = Environment::new();
+        let source = include_str!("../templates/web/templates/emails/layouts/default.html.jinja");
+        let rendered = env
+            .render_str(
+                source,
+                minijinja::context! {
+                    project_name => "my_app",
+                    db_driver => "postgres",
+                    s3 => false,
+                },
+            )
+            .unwrap();
+
+        assert!(
+            rendered.contains("{{subject}}"),
+            "runtime var {{{{subject}}}} must survive scaffolding"
+        );
+        assert!(
+            rendered.contains("{{content}}"),
+            "runtime var {{{{content}}}} must survive scaffolding"
+        );
+    }
+}
