@@ -1,8 +1,7 @@
 use axum::Router;
 use axum::routing::get;
 use http::Request;
-use modo::app::{AppState, ServiceRegistry};
-use modo::config::ServerConfig;
+use modo::{AppState, ServerConfig, ServiceRegistry};
 use modo_auth::{Auth, OptionalAuth, UserProvider, UserProviderService};
 use modo_db::sea_orm::{ConnectionTrait, Schema};
 use modo_db::{DatabaseConfig, DbPool};
