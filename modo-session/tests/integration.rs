@@ -1,3 +1,7 @@
+// Force the linker to include modo_session entity registration.
+#[allow(unused_imports)]
+use modo_session::entity::session as _;
+
 use modo_db::sea_orm::{ConnectionTrait, Schema};
 use modo_db::{DatabaseConfig, DbPool};
 use modo_session::{SessionConfig, SessionMeta, SessionStore};

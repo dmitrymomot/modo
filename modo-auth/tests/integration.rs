@@ -1,3 +1,7 @@
+// Force the linker to include modo_session entity registration.
+#[allow(unused_imports)]
+use modo_session::entity::session as _;
+
 use axum::Router;
 use axum::routing::get;
 use http::Request;
