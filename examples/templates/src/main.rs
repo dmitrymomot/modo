@@ -24,10 +24,12 @@ fn greeting(hour: u32) -> String {
     }
 }
 
+use modo::AppConfig;
+
 #[modo::main]
 async fn main(
     app: modo::app::AppBuilder,
-    config: modo::config::AppConfig,
+    config: AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     app.config(config).run().await
 }

@@ -1,6 +1,6 @@
 # modo
 
-Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB support.
+Rust web framework for small monolithic apps. Single binary, compile-time magic, SQLite + Postgres support.
 
 ## Stack
 
@@ -20,12 +20,20 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 ## Conventions
 
 - Path params: partial extraction supported — declare only the params you need, others ignored via `..`
+- Path param syntax: use `{param}` (axum 0.7+), not `:param`
 - Errors: prefer `HandlerResult<T>` alias; for JSON: `JsonResult<T>` (both accept optional custom error type as 2nd param)
-- JSON wrapper: use `modo::Json` not `modo::axum::Json`
+- JSON response: use `modo::Json` (re-export of `axum::Json`) for responses, not `modo::axum::Json`
 - Middleware stacking order: Global (outermost) → Module → Handler (innermost)
 - HTMX views: htmx template rendered on HX-Request, always HTTP 200, non-200 skips render
 - Template layers: auto-registered when `TemplateEngine` is a service — no manual `.layer()` needed
 - File organization: `mod.rs` is ONLY for `mod` imports and re-exports — all code (handlers, views, tasks) goes in separate files
+- File organization applies to ALL crates: struct/trait definitions, impl blocks, functions, and tests must be in separate files — not in `mod.rs`
+- File organization applies to `lib.rs` too — no trait defs, impl blocks, or functions; only `mod`, `pub use`, and `#[doc(hidden)]` re-export modules
+- Extractors: import with `use modo::extractor::{JsonReq, FormReq, QueryReq};` and use short form in handler signatures — `JsonReq<T>` for request extraction (with sanitization), `Json<T>` for response wrapping
+- Extractors: NEVER use `modo::axum::extract::Query`/`Path`/`Form` directly — always use `QueryReq`, `PathReq`, `FormReq` from `modo::extractor`
+- Versioning: all crates use `version.workspace = true` — bump version only in root `Cargo.toml`
+- Pluggable backends: wrap with `Arc<dyn Trait>` (not `Box`) for consistency across storage, transport, etc.
+- Middleware layer naming: use "ContextLayer" suffix for layers that inject template context (e.g. `SessionContextLayer`, `UserContextLayer`, `TenantContextLayer`)
 
 ## Gotchas
 
@@ -44,3 +52,12 @@ Rust web framework for micro-SaaS. Single binary, compile-time magic, multi-DB s
 - Session user ID access: use `modo_session::user_id_from_extensions(&parts.extensions)` — returns `Option<String>`
 - modo-cli templates: scaffold-time Jinja vars (`{{ project_name }}`) and runtime email vars (`{{name}}`) share syntax — use raw blocks if both appear in one file
 - modo-email in web template: mailer is registered as a jobs service (`.service(email)` on the jobs builder), NOT on the app — app enqueues `SendEmailPayload`, job worker sends
+- `#[modo::main]` macro: the `app: modo::app::AppBuilder` parameter is rewritten by the macro — do NOT import `AppBuilder` separately, always use the full path `modo::app::AppBuilder` in the function signature
+- `#[modo::main]` config type: must implement `DeserializeOwned + Default` — there is no `FromEnv` trait
+- Migrations: prefer typed SeaORM API (`ActiveModelTrait`, `EntityTrait`) over raw SQL (`execute_unprepared`) — raw SQL only for DDL that SeaORM can't express
+- `claude-plugin/skills/modo/references/` docs must stay in sync with crate READMEs — update both when changing API examples
+- SeaORM `DbErr`: `UniqueConstraintViolation` is NOT a direct variant — access via `db_err.sql_err()` which returns `Option<SqlErr>`
+- SeaORM error conversion: can't `impl From<DbErr> for modo::Error` in `modo-db` (orphan rule) — use `db_err_to_error()` helper function instead
+- SeaORM `UpdateMany`: no `.set(col, val)` method — use `.col_expr(col, Expr::value(val))` instead
+- `just test` may fail in sandboxed environments (missing `/tmp` dir) — run with `TMPDIR` set or outside sandbox
+- Publish workflow (`.github/workflows/publish.yml`) uses single workspace version — compares root `Cargo.toml` version against crates.io, publishes all or none

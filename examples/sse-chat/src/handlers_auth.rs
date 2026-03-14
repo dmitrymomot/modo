@@ -1,20 +1,21 @@
-use modo::templates::ViewRenderer;
+use modo::extractor::FormReq;
+use modo::{ViewRenderer, ViewResponse, ViewResult};
 use modo_session::SessionManager;
 
 use crate::types::ROOMS;
 use crate::views::{LoginForm, LoginPage, RoomsPage};
 
 #[modo::handler(GET, "/")]
-async fn index(session: SessionManager) -> modo::ViewResult {
+async fn index(session: SessionManager) -> ViewResult {
     if session.is_authenticated().await {
-        Ok(modo::ViewResponse::redirect("/rooms"))
+        Ok(ViewResponse::redirect("/rooms"))
     } else {
-        Ok(modo::ViewResponse::redirect("/login"))
+        Ok(ViewResponse::redirect("/login"))
     }
 }
 
 #[modo::handler(GET, "/login")]
-async fn login_page(session: SessionManager, view: ViewRenderer) -> modo::ViewResult {
+async fn login_page(session: SessionManager, view: ViewRenderer) -> ViewResult {
     if session.is_authenticated().await {
         return view.redirect("/rooms");
     }
@@ -25,8 +26,8 @@ async fn login_page(session: SessionManager, view: ViewRenderer) -> modo::ViewRe
 async fn login_submit(
     session: SessionManager,
     view: ViewRenderer,
-    form: modo::extractors::Form<LoginForm>,
-) -> modo::ViewResult {
+    form: FormReq<LoginForm>,
+) -> ViewResult {
     let username = form.username.trim().to_string();
     if username.len() < 2 || username.len() > 30 {
         return view.render(LoginPage {
@@ -38,13 +39,13 @@ async fn login_submit(
 }
 
 #[modo::handler(GET, "/logout")]
-async fn logout(session: SessionManager) -> modo::ViewResult {
+async fn logout(session: SessionManager) -> ViewResult {
     session.logout().await?;
-    Ok(modo::ViewResponse::redirect("/login"))
+    Ok(ViewResponse::redirect("/login"))
 }
 
 #[modo::handler(GET, "/rooms")]
-async fn rooms_page(session: SessionManager, view: ViewRenderer) -> modo::ViewResult {
+async fn rooms_page(session: SessionManager, view: ViewRenderer) -> ViewResult {
     let username = match session.user_id().await {
         Some(u) => u,
         None => return view.redirect("/login"),

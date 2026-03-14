@@ -24,6 +24,11 @@ impl SessionId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Consume the ID, returning the inner `String`.
+    pub fn into_string(self) -> String {
+        self.0
+    }
 }
 
 impl Default for SessionId {
@@ -137,7 +142,8 @@ fn hex_digit(b: u8) -> Option<u8> {
 
 /// Full session record loaded from the database.
 ///
-/// Returned by [`crate::manager::SessionManager::current`] and [`crate::manager::SessionManager::list_my_sessions`].
+/// Returned by [`crate::SessionManager::current`] and
+/// [`crate::SessionManager::list_my_sessions`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionData {
     /// Unique session identifier (ULID).

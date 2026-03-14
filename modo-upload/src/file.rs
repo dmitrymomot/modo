@@ -1,8 +1,11 @@
 use crate::validate::UploadValidator;
 
 /// Extract the file extension from a filename (without dot, not lowercased).
-/// Returns `None` for filenames without a dot (e.g. "noext") or dotfiles (e.g. ".gitignore"
-/// returns `Some("gitignore")` via rsplit, but that's handled by the caller check).
+///
+/// Returns `None` when the filename has no dot or when the dot is at position 0
+/// and the entire string equals the "extension" (i.e. the empty string `""`
+/// — the empty-filename case).  Dotfiles like `".gitignore"` return
+/// `Some("gitignore")`.  Filenames with no dot (e.g. `"noext"`) return `None`.
 pub(crate) fn extract_extension(filename: &str) -> Option<&str> {
     let ext = filename.rsplit('.').next()?;
     if ext == filename { None } else { Some(ext) }
@@ -29,6 +32,10 @@ impl FieldMeta {
 }
 
 /// An uploaded file fully buffered in memory.
+///
+/// `UploadedFile` holds all bytes in a single [`bytes::Bytes`] buffer after the
+/// multipart field has been drained.  For large files that should be streamed
+/// rather than fully buffered, use [`BufferedUpload`](crate::BufferedUpload) instead.
 pub struct UploadedFile {
     name: String,
     file_name: String,
@@ -111,7 +118,21 @@ impl UploadedFile {
         }
     }
 
-    /// Start building a validation chain.
+    /// Start building a fluent validation chain for this file.
+    ///
+    /// Returns an `UploadValidator` that lets you chain `.max_size()` and
+    /// `.accept()` calls before calling `.check()` to get the final result.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use modo_upload::mb;
+    ///
+    /// file.validate()
+    ///     .max_size(mb(5))
+    ///     .accept("image/*")
+    ///     .check()?;
+    /// ```
     pub fn validate(&self) -> UploadValidator<'_> {
         UploadValidator::new(self)
     }

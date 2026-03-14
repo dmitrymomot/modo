@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::entity::todo;
+use crate::entity::Todo;
 
 #[derive(Deserialize, modo::Sanitize, modo::Validate)]
 pub(crate) struct CreateTodo {
@@ -16,12 +16,12 @@ pub(crate) struct TodoResponse {
     completed: bool,
 }
 
-impl From<todo::Model> for TodoResponse {
-    fn from(m: todo::Model) -> Self {
+impl From<Todo> for TodoResponse {
+    fn from(t: Todo) -> Self {
         Self {
-            id: m.id,
-            title: m.title,
-            completed: m.completed,
+            id: t.id,
+            title: t.title,
+            completed: t.completed,
         }
     }
 }

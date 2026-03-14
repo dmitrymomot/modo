@@ -1,6 +1,11 @@
 use crate::file::UploadedFile;
 
 /// Fluent validator for uploaded files.
+///
+/// Obtained by calling [`UploadedFile::validate()`].  Chain `.max_size()` and
+/// `.accept()` calls, then call `.check()` to finalize.  All constraint
+/// violations are collected before returning, so a single `.check()` call
+/// reports every failing rule at once.
 pub struct UploadValidator<'a> {
     file: &'a UploadedFile,
     errors: Vec<String>,
@@ -24,7 +29,10 @@ impl<'a> UploadValidator<'a> {
     }
 
     /// Reject if the content type doesn't match `pattern`.
-    /// Supports exact types (`image/png`) and wildcard subtypes (`image/*`).
+    ///
+    /// Supports exact types (`"image/png"`), wildcard subtypes (`"image/*"`),
+    /// and the catch-all `"*/*"`.  Parameters after `;` in the content type
+    /// are stripped before matching.
     pub fn accept(mut self, pattern: &str) -> Self {
         if !mime_matches(self.file.content_type(), pattern) {
             self.errors.push(format!("File type must match {pattern}"));
@@ -32,7 +40,10 @@ impl<'a> UploadValidator<'a> {
         self
     }
 
-    /// Finish validation. Returns `Ok(())` or a validation error.
+    /// Finish validation.
+    ///
+    /// Returns `Ok(())` when all rules pass, or a validation error whose
+    /// `details` map the field name to the collected error messages.
     pub fn check(self) -> Result<(), modo::Error> {
         if self.errors.is_empty() {
             Ok(())
@@ -45,8 +56,10 @@ impl<'a> UploadValidator<'a> {
     }
 }
 
-/// Check if a content type matches a pattern (e.g. `image/*` matches `image/png`).
+/// Check if a content type matches a pattern (e.g. `"image/*"` matches `"image/png"`).
+///
 /// Parameters after `;` in the content type are stripped before matching.
+/// The pattern `"*/*"` matches any type.
 pub fn mime_matches(content_type: &str, pattern: &str) -> bool {
     let content_type = content_type
         .split(';')

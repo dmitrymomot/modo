@@ -95,12 +95,15 @@ struct PollContext {
 /// # Example
 ///
 /// ```rust,no_run
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # async fn example(app: modo::app::AppBuilder) -> Result<(), Box<dyn std::error::Error>> {
 /// let db = modo_db::connect(&Default::default()).await?;
 /// let jobs = modo_jobs::new(&db, &Default::default())
 ///     .service(db.clone())
 ///     .run()
 ///     .await?;
+///
+/// // Register both as managed services for graceful shutdown
+/// app.managed_service(db).managed_service(jobs).run().await?;
 /// # Ok(())
 /// # }
 /// ```

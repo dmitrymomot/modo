@@ -21,10 +21,14 @@ mod migration;
 /// # Struct-level options (applied as a second `#[entity(...)]` attribute)
 ///
 /// - `timestamps` — injects `created_at` and `updated_at` columns of type
-///   `DateTime<Utc>` and sets them automatically in `before_save`.
-/// - `soft_delete` — injects a `deleted_at: Option<DateTime<Utc>>` column and
-///   generates `find`, `find_by_id`, `with_deleted`, `only_deleted`, `soft_delete`,
-///   `restore`, and `force_delete` helpers on the entity module.
+///   `DateTime<Utc>`; both are set automatically via `Record::apply_auto_fields`
+///   on every insert and update.
+/// - `soft_delete` — injects a `deleted_at: Option<DateTime<Utc>>` column. The
+///   `delete` method becomes a soft-delete (sets `deleted_at`). Extra methods
+///   generated on the struct: `with_deleted`, `only_deleted`, `restore`,
+///   `force_delete`, `force_delete_by_id`, `delete_many` (bulk soft-delete),
+///   `force_delete_many` (bulk hard-delete). `find_all` and `query` are overridden
+///   to exclude soft-deleted rows automatically.
 /// - `framework` — marks the entity as framework-internal (non-user schema).
 /// - `index(columns = ["col1", "col2"])` — creates a composite index. Add `unique`
 ///   inside to make it a unique index.
@@ -43,6 +47,8 @@ mod migration;
 /// - `default_expr = "<expr>"` — sets a default SQL expression string.
 /// - `belongs_to = "<Entity>"` — declares a `BelongsTo` relation to the named entity.
 ///   Pair with `on_delete` / `on_update` as needed.
+/// - `to_column = "<Column>"` — overrides the target column for a `belongs_to` FK
+///   (default: `"Id"`).
 /// - `on_delete = "<action>"` — FK action on delete. One of: `Cascade`, `SetNull`,
 ///   `Restrict`, `NoAction`, `SetDefault`.
 /// - `on_update = "<action>"` — FK action on update. Same values as `on_delete`.
@@ -50,6 +56,8 @@ mod migration;
 /// - `has_one` — declares a `HasOne` relation (field is excluded from the model).
 /// - `via = "<JoinEntity>"` — used with `has_many` / `has_one` for many-to-many
 ///   relations through a join entity.
+/// - `target = "<Entity>"` — overrides the inferred target entity name for `has_many`
+///   / `has_one` relations when the field name does not match the entity name.
 /// - `renamed_from = "<old_name>"` — records a rename hint as a column comment.
 ///
 /// # Example
@@ -90,16 +98,14 @@ pub fn entity(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// # Function signature
 ///
-/// The annotated function must be `async` and accept a single `&C` parameter where
-/// `C: ConnectionTrait`. Return type must be `Result<(), DbErr>`.
+/// The annotated function must be `async` and accept a single `&sea_orm::DatabaseConnection`
+/// parameter. Return type must be `Result<(), modo::Error>`.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// #[modo_db::migration(version = 1, description = "seed default roles")]
-/// async fn seed_roles(db: &impl modo_db::sea_orm::ConnectionTrait)
-///     -> Result<(), modo_db::sea_orm::DbErr>
-/// {
+/// async fn seed_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error> {
 ///     // run raw SQL or SeaORM operations
 ///     Ok(())
 /// }

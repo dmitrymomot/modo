@@ -12,9 +12,22 @@
 //!
 //! # Quick start
 //!
+//! Define a form struct, register the storage backend as a service, then
+//! extract the form in a handler:
+//!
 //! ```rust,ignore
-//! use modo_upload::{FromMultipart, MultipartForm, UploadedFile, storage};
-//! use modo_upload::UploadConfig;
+//! use std::sync::Arc;
+//! use modo::{AppConfig, Json, JsonResult, Service};
+//! use modo_upload::{FileStorage, FromMultipart, MultipartForm, UploadConfig, UploadedFile, storage};
+//! use serde::Deserialize;
+//!
+//! #[derive(Default, Deserialize)]
+//! struct AppSettings {
+//!     #[serde(flatten)]
+//!     core: AppConfig,
+//!     #[serde(default)]
+//!     upload: UploadConfig,
+//! }
 //!
 //! #[derive(FromMultipart)]
 //! struct UploadForm {
@@ -24,11 +37,22 @@
 //! }
 //!
 //! #[modo::handler(POST, "/upload")]
-//! async fn upload(form: MultipartForm<UploadForm>) -> modo::JsonResult<()> {
-//!     let storage = storage(&UploadConfig::default())?;
-//!     let stored = storage.store("avatars", &form.avatar).await?;
+//! async fn upload(
+//!     file_storage: Service<Arc<dyn FileStorage>>,
+//!     form: MultipartForm<UploadForm>,
+//! ) -> JsonResult<()> {
+//!     let stored = file_storage.store("avatars", &form.avatar).await?;
 //!     println!("stored at {}", stored.path);
-//!     Ok(modo::Json(()))
+//!     Ok(Json(()))
+//! }
+//!
+//! #[modo::main]
+//! async fn main(
+//!     app: modo::app::AppBuilder,
+//!     config: AppSettings,
+//! ) -> Result<(), Box<dyn std::error::Error>> {
+//!     let file_storage = storage(&config.upload)?;
+//!     app.config(config.core).service(file_storage).run().await
 //! }
 //! ```
 
@@ -37,6 +61,7 @@ pub use modo_upload_macros::FromMultipart;
 mod config;
 mod extractor;
 mod file;
+mod from_multipart;
 pub mod storage;
 mod stream;
 mod validate;
@@ -46,25 +71,10 @@ pub use config::S3Config;
 pub use config::{StorageBackend, UploadConfig};
 pub use extractor::MultipartForm;
 pub use file::UploadedFile;
+pub use from_multipart::FromMultipart;
 pub use storage::{FileStorage, StoredFile, storage};
 pub use stream::BufferedUpload;
 pub use validate::{gb, kb, mb};
-
-/// Trait for parsing a struct from `multipart/form-data`.
-///
-/// Implement this trait (or derive it with `#[derive(FromMultipart)]`) to
-/// describe how multipart fields map to struct fields.  The
-/// [`MultipartForm`] extractor calls this automatically during request
-/// extraction.
-#[async_trait::async_trait]
-pub trait FromMultipart: Sized {
-    /// Parse `multipart` into `Self`, enforcing `max_file_size` on every file
-    /// field when `Some`.
-    async fn from_multipart(
-        multipart: &mut axum::extract::Multipart,
-        max_file_size: Option<usize>,
-    ) -> Result<Self, modo::Error>;
-}
 
 /// Internal helpers exposed for use by generated code. Not public API.
 #[doc(hidden)]

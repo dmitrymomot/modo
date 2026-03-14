@@ -1,27 +1,10 @@
-use modo_db::sea_orm::{
-    ActiveModelTrait, ActiveValue, ConnectionTrait, Database, EntityTrait, Schema,
-};
+mod common;
+
+use common::setup_db;
+use modo_db::sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
 use modo_jobs::entity::job as jobs_entity;
 use modo_jobs::runner;
 use modo_jobs::{JobId, JobState};
-
-async fn setup_db() -> modo_db::sea_orm::DatabaseConnection {
-    let db = Database::connect("sqlite::memory:")
-        .await
-        .expect("Failed to connect");
-
-    let schema = Schema::new(db.get_database_backend());
-    let mut builder = schema.builder();
-    let reg = inventory::iter::<modo_db::EntityRegistration>()
-        .find(|r| r.table_name == "modo_jobs")
-        .unwrap();
-    builder = (reg.register_fn)(builder);
-    builder.sync(&db).await.expect("Schema sync failed");
-    for sql in reg.extra_sql {
-        db.execute_unprepared(sql).await.expect("Extra SQL failed");
-    }
-    db
-}
 
 async fn insert_job(
     db: &modo_db::sea_orm::DatabaseConnection,

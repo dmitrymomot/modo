@@ -43,31 +43,42 @@
 pub mod config;
 pub mod connect;
 pub mod entity;
+mod error;
 pub mod extractor;
+mod helpers;
+pub mod hooks;
 pub mod id;
 pub mod migration;
 pub mod pagination;
 pub mod pool;
+pub mod query;
+mod record;
 pub mod sync;
 
 // Public API
 pub use config::DatabaseConfig;
 pub use connect::connect;
 pub use entity::EntityRegistration;
+#[doc(hidden)]
+pub use error::db_err_to_error;
 pub use extractor::Db;
+#[doc(hidden)]
+pub use helpers::{do_delete, do_insert, do_update};
+pub use hooks::DefaultHooks;
 pub use id::{generate_nanoid, generate_ulid};
 pub use migration::MigrationRegistration;
 pub use pagination::{
     CursorParams, CursorResult, PageParams, PageResult, paginate, paginate_cursor,
 };
 pub use pool::DbPool;
+pub use query::{EntityDeleteMany, EntityQuery, EntityUpdateMany};
+pub use record::Record;
 pub use sync::{sync_and_migrate, sync_and_migrate_group};
 
 // Re-export proc macros
 pub use modo_db_macros::{entity, migration};
 
 // Re-exports for macro-generated code
-pub use async_trait;
 pub use chrono;
 pub use inventory;
 pub use sea_orm;

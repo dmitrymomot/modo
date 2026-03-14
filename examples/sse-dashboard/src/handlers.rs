@@ -1,6 +1,5 @@
-use modo::extractors::service::Service;
 use modo::sse::{Sse, SseEvent, SseResponse, SseStreamExt};
-use modo::templates::ViewRenderer;
+use modo::{Service, ViewRenderer};
 
 use crate::types::{ServerStatus, StatusBroadcaster};
 

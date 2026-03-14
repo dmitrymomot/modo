@@ -12,8 +12,12 @@ This crate is an implementation detail of `modo-db`. Consume these macros throug
 
 ### `#[modo_db::entity(table = "...", group = "...")]`
 
-Transforms an annotated struct into a fully-formed SeaORM entity module and registers it
-with the `inventory` collector so `modo_db::sync_and_migrate` discovers it at startup.
+Transforms an annotated struct into a fully-formed domain model backed by a SeaORM entity
+module and registers it with the `inventory` collector so `modo_db::sync_and_migrate`
+discovers it at startup.
+
+The original struct is **preserved** as a first-class domain type. You work with the struct
+directly rather than with the SeaORM `Model`.
 
 The optional `group` parameter (defaults to `"default"`) assigns the entity to a named group.
 Entities in a group can be synced separately via `modo_db::sync_and_migrate_group`.
@@ -24,8 +28,8 @@ Place these as a second `#[entity(...)]` attribute on the struct itself.
 
 | Option                              | Effect                                                                                    |
 | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `timestamps`                        | Injects `created_at` and `updated_at: DateTime<Utc>` columns; sets them in `before_save`. |
-| `soft_delete`                       | Injects `deleted_at: Option<DateTime<Utc>>` and generates query helpers on the module.    |
+| `timestamps`                        | Injects `created_at` and `updated_at: DateTime<Utc>` columns; set automatically via `Record::apply_auto_fields` on every insert and update. |
+| `soft_delete`                       | Injects `deleted_at: Option<DateTime<Utc>>`. The `delete` method becomes a soft-delete (sets `deleted_at`). Extra methods generated: `with_deleted`, `only_deleted`, `restore`, `force_delete`, `force_delete_by_id`, `delete_many` (bulk soft-delete), `force_delete_many` (bulk hard-delete). `find_all` and `query` exclude soft-deleted rows automatically. |
 | `framework`                         | Marks the entity as framework-internal (hidden from user schema).                         |
 | `index(columns = ["col1", "col2"])` | Creates a composite index. Add `unique` inside for a unique index.                        |
 
@@ -44,25 +48,42 @@ Place these as `#[entity(...)]` on individual struct fields.
 | `default_value = <literal>`    | Sets a column default value.                                                     |
 | `default_expr = "<expr>"`      | Sets a default SQL expression.                                                   |
 | `belongs_to = "<Entity>"`      | Declares a `BelongsTo` relation to the named entity.                             |
+| `to_column = "<Column>"`       | Overrides the target column for a `belongs_to` FK (default: `"Id"`).            |
 | `on_delete = "<action>"`       | FK action on delete: `Cascade`, `SetNull`, `Restrict`, `NoAction`, `SetDefault`. |
 | `on_update = "<action>"`       | FK action on update. Same values as `on_delete`.                                 |
 | `has_many`                     | Declares a `HasMany` relation (field excluded from the model columns).           |
 | `has_one`                      | Declares a `HasOne` relation (field excluded from the model columns).            |
 | `via = "<JoinEntity>"`         | Many-to-many via a join entity. Used with `has_many` or `has_one`.               |
+| `target = "<Entity>"`          | Overrides the inferred target entity name for `has_many` / `has_one` when the field name does not match the entity name. |
 | `renamed_from = "<old>"`       | Records a rename hint as a column comment.                                       |
 
-#### Generated module
+#### What the macro emits
 
-For a struct named `Foo`, the macro emits a `pub mod foo { ... }` containing:
+For a struct named `Foo`, the macro emits:
 
-- `Model` — the SeaORM model struct with all columns
-- `ActiveModel` — SeaORM active model
-- `Entity` — SeaORM entity type
-- `Column` — column enum
-- `Relation` — relation enum
-- `ActiveModelBehavior` impl — runs `before_save` when `timestamps` or `auto` is used
-- Soft-delete helpers (when `soft_delete` is set): `find`, `find_by_id`, `with_deleted`,
-  `only_deleted`, `soft_delete`, `restore`, `force_delete`
+- The original `Foo` struct with `#[derive(Clone, Debug, serde::Serialize)]`
+- `impl Default for Foo` — auto-generates IDs (ULID/NanoID), sets timestamps to `Utc::now()`,
+  uses type defaults for all other fields (`String::new()`, `false`, `0`, `None`, etc.)
+- `impl From<foo::Model> for Foo` — converts a SeaORM model to the domain struct
+- `pub mod foo { ... }` containing:
+  - `Model` — the SeaORM model struct with all columns
+  - `ActiveModel` — SeaORM active model
+  - `Entity` — SeaORM entity type
+  - `Column` — column enum
+  - `Relation` — relation enum
+  - `ActiveModelBehavior` impl — always empty; auto-ID and timestamp logic lives in
+    `Record::apply_auto_fields` instead
+- `impl modo_db::Record for Foo` — wires up `Entity`, `ActiveModel`, `from_model`,
+  `into_active_model_full`, `into_active_model`, and `apply_auto_fields`; also overrides
+  `find_all` and `query` to exclude soft-deleted rows when `soft_delete` is set
+- Inherent `impl Foo` with CRUD methods: `insert`, `update`, `delete`, `find_by_id`,
+  `delete_by_id`
+- Relation accessor methods (when relations are declared): e.g. `post.user(&db)`,
+  `user.posts(&db)`
+- Soft-delete methods on the struct (when `soft_delete` is set): `restore`, `force_delete`,
+  `force_delete_by_id`, `with_deleted`, `only_deleted`, `delete_many` (bulk soft-delete),
+  `force_delete_many` (bulk hard-delete)
+- An `inventory::submit!` block that registers the entity for schema sync
 
 #### Basic entity example
 
@@ -76,6 +97,12 @@ pub struct Todo {
     #[entity(default_value = false)]
     pub completed: bool,
 }
+
+// Usage — struct-update syntax with generated Default:
+let todo = Todo {
+    title: "Buy milk".into(),
+    ..Default::default()  // id auto-generated, completed = false, timestamps = now()
+}.insert(&db).await?;
 ```
 
 #### Entity with relations
@@ -102,6 +129,10 @@ pub struct User {
     #[entity(has_many)]
     pub posts: (),
 }
+
+// Generated accessor methods:
+let author: Option<User> = post.user(&db).await?;
+let posts: Vec<Post> = user.posts(&db).await?;
 ```
 
 #### Composite index
@@ -121,21 +152,30 @@ pub struct Membership {
 
 ### `#[modo_db::migration(version = <u64>, description = "...", group = "...")]`
 
-Registers an async SQL migration function. `modo_db::sync_and_migrate` runs all
+Registers a migration function. `modo_db::sync_and_migrate` runs all
 registered migrations in ascending `version` order after schema sync.
 
 The optional `group` parameter (defaults to `"default"`) assigns the migration to a named group.
 Migrations in a group run only when `modo_db::sync_and_migrate_group` is called with the
 matching group name.
 
-The annotated function must be `async fn(db: &impl ConnectionTrait) -> Result<(), DbErr>`.
+The annotated function must be `async fn(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error>`.
+The `db` parameter implements `ConnectionTrait`, so the full SeaORM typed API is available:
 
 ```rust,ignore
 #[modo_db::migration(version = 1, description = "seed default roles")]
-async fn seed_default_roles(
-    db: &impl modo_db::sea_orm::ConnectionTrait,
-) -> Result<(), modo_db::sea_orm::DbErr> {
-    // run raw SQL or SeaORM operations
+async fn seed_default_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error> {
+    use sea_orm::{ActiveModelTrait, Set};
+
+    for name in ["admin", "user"] {
+        role::ActiveModel {
+            name: Set(name.to_owned()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
+    }
     Ok(())
 }
 ```

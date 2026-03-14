@@ -28,8 +28,9 @@ Session-based authentication and Argon2id password hashing for modo applications
 
 ```rust
 use modo_auth::{UserProvider, UserProviderService};
+use serde::Serialize;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 struct MyUser {
     id: String,
     name: String,
@@ -49,6 +50,8 @@ impl UserProvider for UserRepo {
 }
 ```
 
+Note: `serde::Serialize` is required on the user type only when using `UserContextLayer` (feature `templates`).
+
 ### 2. Register services in `main`
 
 ```rust
@@ -64,7 +67,6 @@ async fn main(
 
     app.service(UserProviderService::new(repo))
        .service(hasher)
-       .layer(modo_session::layer(session_store))
        .run()
        .await
 }
@@ -92,22 +94,17 @@ async fn home(OptionalAuth(user): OptionalAuth<MyUser>) -> String {
 ### 4. Hash and verify passwords
 
 ```rust
-use modo_auth::{PasswordHasher, PasswordConfig};
-use modo::extractors::Service;
+use modo_auth::PasswordHasher;
+use modo::Service;
 
-// Use default OWASP-recommended settings
-let hasher = PasswordHasher::default();
-
-let hash = hasher.hash_password("correct-horse-battery-staple").await?;
-let valid = hasher.verify_password("correct-horse-battery-staple", &hash).await?;
-
-// Extract in a handler
+// Extract the hasher in a handler
 async fn register(
     Service(hasher): Service<PasswordHasher>,
-    // ...
-) {
-    let hash = hasher.hash_password(&form.password).await?;
-    // store hash in DB
+) -> Result<(), modo::Error> {
+    let hash = hasher.hash_password("correct-horse-battery-staple").await?;
+    let valid = hasher.verify_password("correct-horse-battery-staple", &hash).await?;
+    // store hash in DB...
+    Ok(())
 }
 ```
 
@@ -116,12 +113,14 @@ async fn register(
 ```rust
 use modo_auth::{PasswordConfig, PasswordHasher};
 
-let config = PasswordConfig {
-    memory_cost_kib: 32768, // 32 MiB
-    time_cost: 3,
-    parallelism: 1,
-};
-let hasher = PasswordHasher::new(config)?;
+fn build_hasher() -> Result<PasswordHasher, modo::Error> {
+    let config = PasswordConfig {
+        memory_cost_kib: 32768, // 32 MiB
+        time_cost: 3,
+        parallelism: 1,
+    };
+    PasswordHasher::new(config)
+}
 ```
 
 `PasswordConfig` implements `serde::Deserialize` with `#[serde(default)]`, so you can load it from YAML with partial overrides:
@@ -134,15 +133,24 @@ password:
 
 ### 6. Inject user into template context (feature `templates`)
 
+The user type must implement `serde::Serialize` for this layer.
+
 ```rust
 use modo_auth::{UserContextLayer, UserProviderService};
 
-// In main — add after the session layer
-app.service(UserProviderService::new(repo))
-   .layer(UserContextLayer::new(UserProviderService::new(repo2)))
-   .layer(modo_session::layer(session_store))
-   .run()
-   .await
+#[modo::main]
+async fn main(
+    app: modo::app::AppBuilder,
+    config: Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let repo = UserRepo { /* ... */ };
+    let user_svc = UserProviderService::new(repo);
+
+    app.service(user_svc.clone())
+       .layer(UserContextLayer::new(user_svc))
+       .run()
+       .await
+}
 ```
 
 The layer inserts the authenticated user as `"user"` into the minijinja `TemplateContext`, available in every template without explicit handler code. If no session exists or the user is not found, nothing is injected.

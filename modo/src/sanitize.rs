@@ -7,7 +7,7 @@ pub trait Sanitize {
 
 /// `inventory` registration entry for an auto-sanitizer, created by `#[derive(Sanitize)]`.
 ///
-/// Collected at startup and applied automatically by extractors (`Form`, `Json`).
+/// Collected at startup and applied automatically by extractors (`FormReq`, `JsonReq`).
 pub struct SanitizerRegistration {
     pub type_id: TypeId,
     pub sanitize: fn(&mut dyn Any),
@@ -16,7 +16,7 @@ pub struct SanitizerRegistration {
 inventory::collect!(SanitizerRegistration);
 
 /// Auto-sanitize a value if a sanitizer is registered for its type.
-/// Called by extractors (Form, Json, MultipartForm) during request parsing.
+/// Called by extractors (`FormReq`, `JsonReq`) during request parsing.
 /// No-op if no `#[derive(Sanitize)]` was used on the type.
 pub fn auto_sanitize<T: Any + 'static>(value: &mut T) {
     for reg in inventory::iter::<SanitizerRegistration> {

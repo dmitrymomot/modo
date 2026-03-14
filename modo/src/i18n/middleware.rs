@@ -30,7 +30,7 @@ pub struct I18nLayer {
 /// Resolution chain: query parameter -> cookie -> Accept-Language header -> default.
 ///
 /// The resolved locale is inserted into request extensions as [`ResolvedLang`]
-/// for downstream extractors (e.g., [`I18n`](crate::extractor::I18n)).
+/// for downstream extractors (e.g., [`I18n`](super::I18n)).
 pub fn layer(store: Arc<TranslationStore>, cookie_config: Arc<CookieConfig>) -> I18nLayer {
     I18nLayer {
         store,

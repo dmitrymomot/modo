@@ -1,9 +1,7 @@
 # modo-macros
 
-[![docs.rs](https://img.shields.io/docsrs/modo-macros)](https://docs.rs/modo-macros)
-
 Procedural macros for the modo web framework. Provides attribute macros for
-route registration, application bootstrap, and derive macros for input
+route registration and application bootstrap, plus derive macros for input
 validation and sanitization.
 
 All macros are re-exported from `modo` — import them as `modo::handler`,
@@ -16,8 +14,8 @@ All macros are re-exported from `modo` — import them as `modo::handler`,
 | `static-embed` | `#[main(static_assets = "...")]` static file embedding via `rust-embed` |
 
 Template and i18n macros (`#[view]`, `#[template_function]`, `#[template_filter]`, `t!`)
-are re-exported from `modo` only when the corresponding `templates` or `i18n`
-feature is enabled on the `modo` crate.
+are only active when the corresponding `templates` or `i18n` feature is enabled
+on the `modo` crate.
 
 ## Usage
 
@@ -27,30 +25,49 @@ feature is enabled on the `modo` crate.
 #[modo::main]
 async fn main(
     app: modo::app::AppBuilder,
-    config: modo::config::AppConfig,
+    config: modo::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     app.config(config).run().await
 }
 ```
 
 The function must be named `main`, be `async`, and accept exactly two
-parameters: an `AppBuilder` and a config type. The macro bootstraps a
-multi-threaded Tokio runtime, configures `tracing_subscriber`, loads config
-via environment variables, and exits with code 1 on error.
+parameters: an `AppBuilder` and a config type that implements
+`serde::de::DeserializeOwned + Default`. The macro replaces the function with a
+sync `fn main()` that bootstraps a multi-threaded Tokio runtime, configures
+`tracing_subscriber` (using `RUST_LOG` or falling back to
+`"info,sqlx::query=warn"`), loads config via `modo::config::load_or_default`,
+and exits with code 1 on error.
+
+The return type annotation on the `async fn main` is not enforced by the macro;
+write it for readability but the body is wrapped internally.
+
+### Embedding static files
+
+```rust
+#[modo::main(static_assets = "static/")]
+async fn main(
+    app: modo::app::AppBuilder,
+    config: modo::AppConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    app.config(config).run().await
+}
+```
+
+Requires the `static-embed` feature on `modo-macros`.
 
 ### HTTP handlers
 
 ```rust
 #[modo::handler(GET, "/todos")]
-async fn list_todos(/* axum extractors */) -> modo::JsonResult<Vec<Todo>> {
-    // ...
+async fn list_todos() -> modo::JsonResult<Vec<Todo>> {
     Ok(modo::Json(vec![]))
 }
 
 #[modo::handler(DELETE, "/todos/{id}")]
-async fn delete_todo(id: String) -> modo::HandlerResult<()> {
+async fn delete_todo(id: String) -> modo::JsonResult<serde_json::Value> {
     // `id` is extracted from the path automatically
-    Ok(())
+    Ok(modo::Json(serde_json::json!({"deleted": id})))
 }
 ```
 
@@ -79,7 +96,8 @@ async fn dashboard() -> &'static str {
 ```
 
 Bare middleware paths are wrapped with `axum::middleware::from_fn`. Paths
-followed by `(args)` are called as layer factories.
+followed by `(args)` are called as layer factories. Multiple middleware entries
+are applied in the order listed.
 
 ### Route modules
 
@@ -98,8 +116,8 @@ mod admin {
 }
 ```
 
-All `#[handler]` attributes inside the module are automatically associated
-with the module's prefix and middleware at compile time.
+All `#[handler]` attributes inside the module are automatically associated with
+the module's prefix and middleware at compile time via `inventory`.
 
 ### Custom error handler
 
@@ -107,14 +125,18 @@ with the module's prefix and middleware at compile time.
 #[modo::error_handler]
 fn my_error_handler(
     err: modo::Error,
-    _ctx: &modo::ErrorContext,
+    ctx: &modo::ErrorContext,
 ) -> axum::response::Response {
+    if ctx.accepts_html() {
+        // render an HTML error page
+    }
     err.default_response()
 }
 ```
 
 The function must be sync and accept exactly `(modo::Error, &modo::ErrorContext)`.
 It is registered via `inventory` and invoked for every unhandled `modo::Error`.
+Only one error handler may be registered per binary.
 
 ### Input sanitization
 
@@ -133,6 +155,8 @@ Available `#[clean(...)]` rules: `trim`, `lowercase`, `uppercase`,
 `strip_html_tags`, `collapse_whitespace`, `truncate = N`, `normalize_email`,
 `custom = "path::to::fn"`.
 
+Sanitization runs automatically inside `JsonReq` and `FormReq` extractors.
+
 ### Input validation
 
 ```rust
@@ -150,7 +174,8 @@ struct CreateTodo {
 }
 
 // In a handler:
-async fn create(input: modo::validate::Json<CreateTodo>) -> modo::JsonResult<()> {
+use modo::extractor::JsonReq;
+async fn create(input: JsonReq<CreateTodo>) -> modo::JsonResult<()> {
     input.validate()?;
     Ok(modo::Json(()))
 }
@@ -158,9 +183,10 @@ async fn create(input: modo::validate::Json<CreateTodo>) -> modo::JsonResult<()>
 
 Available `#[validate(...)]` rules: `required`, `min_length = N`,
 `max_length = N`, `email`, `min = V`, `max = V`, `custom = "path::to::fn"`.
-Each rule accepts an optional `(message = "...")` override.
+Each rule accepts an optional `(message = "...")` override. A field-level
+`message = "..."` key is used as a fallback for all rules on that field.
 
-### Templates (requires `templates` feature)
+### Templates (requires `templates` feature on `modo`)
 
 ```rust
 #[modo::view("pages/home.html")]
@@ -185,7 +211,7 @@ fn shout_filter(s: String) -> String {
 }
 ```
 
-### Localisation (requires `i18n` feature)
+### Localisation (requires `i18n` feature on `modo`)
 
 ```rust
 // In a handler with an I18n extractor:
@@ -193,19 +219,20 @@ let msg = modo::t!(i18n, "welcome.message", name = username);
 let items = modo::t!(i18n, "cart.items", count = cart_count);
 ```
 
-`t!` calls `i18n.t_plural` when a `count` variable is present.
+`t!` calls `.t_plural` on the i18n context when a `count` variable is present,
+selecting the correct plural form.
 
 ## Key Macros
 
-| Macro                  | Kind          | Purpose                                                 |
-| ---------------------- | ------------- | ------------------------------------------------------- |
-| `#[handler]`           | attribute     | Register an async fn as an HTTP route                   |
-| `#[main]`              | attribute     | Application entry point and runtime bootstrap           |
-| `#[module]`            | attribute     | Group routes under a shared prefix                      |
-| `#[error_handler]`     | attribute     | Register a custom error handler                         |
-| `#[Sanitize]`          | derive        | Generate `Sanitize::sanitize` from `#[clean]` fields    |
-| `#[Validate]`          | derive        | Generate `Validate::validate` from `#[validate]` fields |
-| `t!`                   | function-like | Localisation key lookup with variable substitution      |
-| `#[view]`              | attribute     | Link a struct to a MiniJinja template                   |
-| `#[template_function]` | attribute     | Register a MiniJinja global function                    |
-| `#[template_filter]`   | attribute     | Register a MiniJinja filter                             |
+| Macro                  | Kind          | Purpose                                                  |
+| ---------------------- | ------------- | -------------------------------------------------------- |
+| `#[handler]`           | attribute     | Register an async fn as an HTTP route                    |
+| `#[main]`              | attribute     | Application entry point and runtime bootstrap            |
+| `#[module]`            | attribute     | Group routes under a shared URL prefix                   |
+| `#[error_handler]`     | attribute     | Register a custom error handler                          |
+| `Sanitize`             | derive        | Generate `Sanitize::sanitize` from `#[clean]` fields     |
+| `Validate`             | derive        | Generate `Validate::validate` from `#[validate]` fields  |
+| `t!`                   | function-like | Localisation key lookup with variable substitution       |
+| `#[view]`              | attribute     | Link a struct to a MiniJinja template                    |
+| `#[template_function]` | attribute     | Register a MiniJinja global function                     |
+| `#[template_filter]`   | attribute     | Register a MiniJinja filter                              |

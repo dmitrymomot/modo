@@ -52,10 +52,11 @@ impl<R: TenantResolver> TenantResolverDyn<R::Tenant> for R {
 
 /// Type-erased, cheaply cloneable wrapper around a [`TenantResolver`].
 ///
-/// Register one instance per tenant type with `AppState`'s service registry.
-/// The [`Tenant`](crate::Tenant) and [`OptionalTenant`](crate::OptionalTenant)
-/// extractors and `TenantContextLayer` (feature `"templates"`) all retrieve
-/// this service at request time.
+/// Register one instance per tenant type via `AppBuilder::service()` before
+/// calling `run()`. The [`Tenant`](crate::Tenant) and
+/// [`OptionalTenant`](crate::OptionalTenant) extractors and
+/// `TenantContextLayer` (feature `"templates"`) all retrieve this service from
+/// the registry at request time.
 pub struct TenantResolverService<T: Clone + Send + Sync + 'static> {
     inner: Arc<dyn TenantResolverDyn<T>>,
 }

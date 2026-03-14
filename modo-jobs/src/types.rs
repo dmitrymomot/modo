@@ -3,7 +3,7 @@ use std::fmt;
 use std::str::FromStr;
 
 /// Unique identifier for a job, backed by a ULID string.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct JobId(String);
 
 impl JobId {
@@ -44,6 +44,14 @@ impl AsRef<str> for JobId {
 impl fmt::Display for JobId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
+    }
+}
+
+impl FromStr for JobId {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.to_string()))
     }
 }
 

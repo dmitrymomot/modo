@@ -1,6 +1,6 @@
 [package]
 name = "modo-db"
-version = "0.1.1"
+version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true
@@ -27,7 +27,6 @@ chrono = { version = "0.4", features = ["serde"] }
 nanoid = "0.4"
 tracing = "0.1"
 thiserror = "2"
-async-trait = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
