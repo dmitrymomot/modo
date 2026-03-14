@@ -48,8 +48,6 @@ pub type JsonResult<T, E = Error> = Result<axum::Json<T>, E>;
 pub type ViewResult<E = Error> = Result<crate::templates::ViewResponse, E>;
 ```
 
-Source: `modo/src/error.rs`, lines 335–346.
-
 ### When to Use Which
 
 | Scenario | Return type |
@@ -103,7 +101,7 @@ UnprocessableEntity, TooManyRequests, InternalServerError,
 ServiceUnavailable, GatewayTimeout
 ```
 
-Full list in `modo/src/error.rs` lines 12–55.
+See `modo::HttpError` for the full list of variants.
 
 ### JSON Error Response Shape
 
@@ -185,7 +183,7 @@ CORS
                                       Handler Middleware (innermost)
 ```
 
-Source: `modo/src/app.rs`, lines 545–552.
+See `AppBuilder::run()` in `modo/src/app.rs` for the exact assembly order.
 
 ### AppBuilder API
 
@@ -428,12 +426,14 @@ When using `modo-email` in a web application, the mailer is registered as a jobs
 
 ```rust
 // Correct: register on the jobs builder
-let jobs = JobsBuilder::new()
+let jobs = modo_jobs::new(&db, &config.jobs)
+    .service(db.clone())
     .service(email_service)   // ← on jobs, NOT app
-    .build();
+    .run()
+    .await?;
 
-// The app enqueues a payload; the job worker sends the email
-app.service(jobs_client)
+// Register jobs as a managed service for graceful shutdown
+app.managed_service(jobs)
 ```
 
 Do not call `.service(email)` on the `AppBuilder`. The app enqueues `SendEmailPayload`; the job worker handles delivery.

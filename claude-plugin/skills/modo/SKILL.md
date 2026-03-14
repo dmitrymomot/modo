@@ -35,7 +35,7 @@ equivalent exists, and call that choice out explicitly in the plan.
 
 ## Assumed Starting Point
 
-> **Version target:** These reference docs are written against **modo 0.1.x**
+> **Version target:** These reference docs are written against **modo 0.2.x**
 > and **SeaORM v2 RC**. If the project uses a different version, verify API
 > signatures against the actual source before generating code.
 

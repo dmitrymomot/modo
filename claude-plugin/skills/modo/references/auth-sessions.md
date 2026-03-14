@@ -31,9 +31,14 @@ impl UserProvider for UserRepo {
     type User = User; // your user struct
 
     async fn find_by_id(&self, id: &str) -> Result<Option<User>, modo::Error> {
-        // Query your database. Return Ok(None) when the user does not exist.
+        // Return Ok(None) when the user does not exist.
         // Return Err only for infrastructure failures such as DB errors.
-        User::find_by_id(id, &self.db).await
+        // Note: User::find_by_id() returns Result<User, Error> with auto-404,
+        // so use query().one() which returns Option<T> instead.
+        User::query()
+            .filter(user::Column::Id.eq(id))
+            .one(&*self.db)
+            .await
     }
 }
 ```

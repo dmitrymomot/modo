@@ -85,7 +85,7 @@ async fn send_report(
 ```rust
 use modo_jobs::job;
 use modo::HandlerResult;
-use modo_db::extractor::Db;
+use modo_db::Db;
 
 #[job(queue = "default")]
 async fn sync_user(payload: SyncPayload, Db(db): Db) -> HandlerResult<()> {

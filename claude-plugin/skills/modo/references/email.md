@@ -471,7 +471,7 @@ use modo_email::{Mailer, SendEmail, SendEmailPayload, SenderProfile};
 use modo_jobs::job;
 use modo::HandlerResult;
 use modo::Service;
-use modo_db::extractor::Db;
+use modo_db::Db;
 
 #[job(queue = "mailer", max_attempts = 3, timeout = "30s")]
 async fn send_email(
