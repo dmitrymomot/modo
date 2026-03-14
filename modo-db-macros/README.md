@@ -1,6 +1,6 @@
 # modo-db-macros
 
-[\![docs.rs](https://img.shields.io/docsrs/modo-db-macros)](https://docs.rs/modo-db-macros)
+[![docs.rs](https://img.shields.io/docsrs/modo-db-macros)](https://docs.rs/modo-db-macros)
 
 Procedural macros powering the `modo-db` entity and migration system.
 
@@ -28,8 +28,8 @@ Place these as a second `#[entity(...)]` attribute on the struct itself.
 
 | Option                              | Effect                                                                                    |
 | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `timestamps`                        | Injects `created_at` and `updated_at: DateTime<Utc>` columns; sets them before insert/update. |
-| `soft_delete`                       | Injects `deleted_at: Option<DateTime<Utc>>` and generates soft-delete methods on the struct. |
+| `timestamps`                        | Injects `created_at` and `updated_at: DateTime<Utc>` columns; set automatically via `Record::apply_auto_fields` on every insert and update. |
+| `soft_delete`                       | Injects `deleted_at: Option<DateTime<Utc>>`. The `delete` method becomes a soft-delete (sets `deleted_at`). Extra methods generated: `with_deleted`, `only_deleted`, `restore`, `force_delete`, `force_delete_by_id`, `delete_many` (bulk soft-delete), `force_delete_many` (bulk hard-delete). `find_all` and `query` exclude soft-deleted rows automatically. |
 | `framework`                         | Marks the entity as framework-internal (hidden from user schema).                         |
 | `index(columns = ["col1", "col2"])` | Creates a composite index. Add `unique` inside for a unique index.                        |
 
@@ -48,11 +48,13 @@ Place these as `#[entity(...)]` on individual struct fields.
 | `default_value = <literal>`    | Sets a column default value.                                                     |
 | `default_expr = "<expr>"`      | Sets a default SQL expression.                                                   |
 | `belongs_to = "<Entity>"`      | Declares a `BelongsTo` relation to the named entity.                             |
+| `to_column = "<Column>"`       | Overrides the target column for a `belongs_to` FK (default: `"Id"`).            |
 | `on_delete = "<action>"`       | FK action on delete: `Cascade`, `SetNull`, `Restrict`, `NoAction`, `SetDefault`. |
 | `on_update = "<action>"`       | FK action on update. Same values as `on_delete`.                                 |
 | `has_many`                     | Declares a `HasMany` relation (field excluded from the model columns).           |
 | `has_one`                      | Declares a `HasOne` relation (field excluded from the model columns).            |
 | `via = "<JoinEntity>"`         | Many-to-many via a join entity. Used with `has_many` or `has_one`.               |
+| `target = "<Entity>"`          | Overrides the inferred target entity name for `has_many` / `has_one` when the field name does not match the entity name. |
 | `renamed_from = "<old>"`       | Records a rename hint as a column comment.                                       |
 
 #### What the macro emits
@@ -79,9 +81,9 @@ For a struct named `Foo`, the macro emits:
 - Relation accessor methods (when relations are declared): e.g. `post.user(&db)`,
   `user.posts(&db)`
 - Soft-delete methods on the struct (when `soft_delete` is set): `restore`, `force_delete`,
-  `force_delete_by_id`, `with_deleted`, `only_deleted`, `delete_many` (soft),
-  `force_delete_many` (hard)
-- An `inventory::submit\!` block that registers the entity for schema sync
+  `force_delete_by_id`, `with_deleted`, `only_deleted`, `delete_many` (bulk soft-delete),
+  `force_delete_many` (bulk hard-delete)
+- An `inventory::submit!` block that registers the entity for schema sync
 
 #### Basic entity example
 
@@ -172,7 +174,7 @@ async fn seed_default_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo
         }
         .insert(db)
         .await
-        .map_err(|e| modo::Error::internal(format\!("Migration failed: {e}")))?;
+        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
     }
     Ok(())
 }
