@@ -28,7 +28,7 @@ struct ProfileForm {
     #[upload(max_size = "5mb", accept = "image/*")]
     avatar: UploadedFile,
 
-    // optional second avatar
+    // optional second file
     banner: Option<UploadedFile>,
 
     // multiple file upload (1–4 files, each ≤ 2 MB)
@@ -45,15 +45,15 @@ struct ProfileForm {
 
 Supported field types:
 
-| Rust type              | Multipart field                |
-| ---------------------- | ------------------------------ |
-| `UploadedFile`         | required file                  |
-| `Option<UploadedFile>` | optional file                  |
-| `Vec<UploadedFile>`    | zero or more files             |
-| `BufferedUpload`       | required file (chunked reader) |
-| `String`               | required text                  |
-| `Option<String>`       | optional text                  |
-| any `FromStr` type     | required text, parsed          |
+| Rust type              | Multipart field                        |
+| ---------------------- | -------------------------------------- |
+| `UploadedFile`         | required file                          |
+| `Option<UploadedFile>` | optional file                          |
+| `Vec<UploadedFile>`    | zero or more files (count constraints via `min_count`/`max_count`) |
+| `BufferedUpload`       | required file (chunked reader)         |
+| `String`               | required text                          |
+| `Option<String>`       | optional text                          |
+| any `FromStr` type     | required text, parsed                  |
 
 ### Extract in a handler
 
@@ -61,8 +61,8 @@ Use `MultipartForm<T>` as an axum extractor. Text fields are auto-sanitized.
 Call `.validate()` when `T` also derives `modo::Validate`.
 
 ```rust
-use modo::JsonResult;
-use modo::Service;
+use std::sync::Arc;
+use modo::{Json, JsonResult, Service};
 use modo_upload::{FileStorage, MultipartForm};
 
 #[modo::handler(POST, "/profile")]
@@ -72,8 +72,8 @@ async fn update_profile(
 ) -> JsonResult<serde_json::Value> {
     form.validate()?;
     let stored = storage.store("avatars", &form.avatar).await?;
-    Ok(modo::Json(serde_json::json!({
-        "name": *form.name,
+    Ok(Json(serde_json::json!({
+        "name": form.name,
         "avatar_path": stored.path,
     })))
 }
@@ -82,18 +82,27 @@ async fn update_profile(
 ### Register the storage backend
 
 Build the storage backend from `UploadConfig` and register it as a service so
-extractors can resolve it.
+extractors can resolve it via `Service<Arc<dyn FileStorage>>`.
 
 ```rust
 use modo_upload::{UploadConfig, storage};
+use serde::Deserialize;
+
+#[derive(Default, Deserialize)]
+struct AppConfig {
+    #[serde(flatten)]
+    core: modo::AppConfig,
+    #[serde(default)]
+    upload: UploadConfig,
+}
 
 #[modo::main]
 async fn main(
     app: modo::app::AppBuilder,
     config: AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let store = storage(&config.upload)?;
-    app.config(config.core).service(store).run().await
+    let file_storage = storage(&config.upload)?;
+    app.config(config.core).service(file_storage).run().await
 }
 ```
 
@@ -155,5 +164,5 @@ upload:
 | `StoredFile`                     | Result of a store operation: `path` and `size`                   |
 | `UploadConfig`                   | Deserialized upload configuration                                |
 | `StorageBackend`                 | Enum: `Local` or `S3`                                            |
-| `storage()`                      | Factory function: `UploadConfig` → `Arc<dyn FileStorage>`        |
+| `storage()`                      | Factory function: `&UploadConfig` → `Arc<dyn FileStorage>`       |
 | `kb` / `mb` / `gb`               | Size helper functions (return `usize` bytes)                     |

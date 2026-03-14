@@ -121,21 +121,30 @@ pub struct Membership {
 
 ### `#[modo_db::migration(version = <u64>, description = "...", group = "...")]`
 
-Registers an async SQL migration function. `modo_db::sync_and_migrate` runs all
+Registers a migration function. `modo_db::sync_and_migrate` runs all
 registered migrations in ascending `version` order after schema sync.
 
 The optional `group` parameter (defaults to `"default"`) assigns the migration to a named group.
 Migrations in a group run only when `modo_db::sync_and_migrate_group` is called with the
 matching group name.
 
-The annotated function must be `async fn(db: &impl ConnectionTrait) -> Result<(), DbErr>`.
+The annotated function must be `async fn(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error>`.
+The `db` parameter implements `ConnectionTrait`, so the full SeaORM typed API is available:
 
 ```rust,ignore
 #[modo_db::migration(version = 1, description = "seed default roles")]
-async fn seed_default_roles(
-    db: &impl modo_db::sea_orm::ConnectionTrait,
-) -> Result<(), modo_db::sea_orm::DbErr> {
-    // run raw SQL or SeaORM operations
+async fn seed_default_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error> {
+    use sea_orm::{ActiveModelTrait, Set};
+
+    for name in ["admin", "user"] {
+        role::ActiveModel {
+            name: Set(name.to_owned()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
+    }
     Ok(())
 }
 ```

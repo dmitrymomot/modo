@@ -37,7 +37,7 @@ app.service(session_store.clone())
 ```
 
 Registering the store as a `.service()` makes it available to background jobs
-(e.g. the `cleanup-job`).
+(e.g. the `cleanup-job` cron job).
 
 ### Authentication
 
@@ -86,7 +86,7 @@ async fn me(session: SessionManager) -> modo::HandlerResult<String> {
 ### Session data (key/value store)
 
 ```rust
-#[modo::handler(GET, "/set-flag")]
+#[modo::handler(POST, "/set-flag")]
 async fn set_flag(session: SessionManager) -> modo::HandlerResult<()> {
     session.set("onboarded", &true).await?;
     Ok(())
@@ -102,12 +102,14 @@ async fn get_flag(session: SessionManager) -> modo::HandlerResult<String> {
 ### Reading user ID from other middleware
 
 When you need the current user ID inside a Tower layer (not a handler), use the
-non-blocking helper:
+non-blocking helper. It reads from request extensions injected by the session
+middleware:
 
 ```rust
 use modo_session::user_id_from_extensions;
 
-let user_id = user_id_from_extensions(request.extensions());
+// Inside a FromRequestParts or tower::Service impl:
+let user_id = user_id_from_extensions(&parts.extensions);
 ```
 
 ## Configuration
@@ -115,13 +117,13 @@ let user_id = user_id_from_extensions(request.extensions());
 `SessionConfig` deserialises from YAML/TOML with `#[serde(default)]`:
 
 ```yaml
-session_ttl_secs: 2592000 # 30 days (default)
-cookie_name: "_session" # default
-validate_fingerprint: true # default
-touch_interval_secs: 300 # 5 minutes (default)
-max_sessions_per_user: 10 # default; LRU eviction when exceeded
-trusted_proxies: # default: empty (trust all proxy headers)
-    - "10.0.0.0/8"
+session_ttl_secs: 2592000   # 30 days (default)
+cookie_name: "_session"     # default
+validate_fingerprint: true  # default
+touch_interval_secs: 300    # 5 minutes (default)
+max_sessions_per_user: 10   # default; LRU eviction when exceeded
+trusted_proxies:            # default: empty (trust all proxy headers)
+  - "10.0.0.0/8"
 ```
 
 ## Key Types
@@ -129,7 +131,7 @@ trusted_proxies: # default: empty (trust all proxy headers)
 | Type                      | Description                                                              |
 | ------------------------- | ------------------------------------------------------------------------ |
 | `SessionConfig`           | Tunable parameters: TTL, cookie name, fingerprint, proxies.              |
-| `SessionStore`            | Low-level DB store; use as a managed service for background jobs.        |
+| `SessionStore`            | Low-level DB store; register as a managed service for background jobs.   |
 | `SessionManager`          | Axum extractor for request-scoped session operations.                    |
 | `SessionData`             | Full session record (ID, user, device info, JSON payload, timestamps).   |
 | `SessionId`               | Opaque ULID-based session identifier.                                    |

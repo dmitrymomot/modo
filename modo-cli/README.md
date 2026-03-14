@@ -1,7 +1,5 @@
 # modo-cli
 
-[![docs.rs](https://img.shields.io/docsrs/modo-cli)](https://docs.rs/modo-cli)
-
 CLI tool for scaffolding new [modo](https://github.com/dmitrymomot/modo) framework projects.
 
 ## Installation
@@ -20,23 +18,23 @@ After installation the `modo` binary is available on your `$PATH`.
 modo new <NAME> [OPTIONS]
 ```
 
-| Option                      | Default | Description                                           |
-| --------------------------- | ------- | ----------------------------------------------------- |
-| `-t, --template <TEMPLATE>` | `web`   | Template preset to use                                |
-| `--postgres`                | —       | Use PostgreSQL database driver                        |
-| `--sqlite`                  | —       | Use SQLite database driver (default for DB templates) |
-| `--s3`                      | —       | Use S3 storage with RustFS in development (web only)  |
+| Option                      | Default  | Description                                           |
+| --------------------------- | -------- | ----------------------------------------------------- |
+| `-t, --template <TEMPLATE>` | `web`    | Template preset to use                                |
+| `--postgres`                | —        | Use PostgreSQL database driver                        |
+| `--sqlite`                  | —        | Use SQLite database driver (default for DB templates) |
+| `--s3`                      | —        | Use S3 storage with RustFS in development (web only)  |
 
 `--postgres` and `--sqlite` are mutually exclusive.
 
 ### Templates
 
-| Template  | Database          | Description                                                        |
-| --------- | ----------------- | ------------------------------------------------------------------ |
-| `minimal` | none              | Bare-bones project with configuration only                         |
-| `api`     | sqlite / postgres | JSON API with handlers and models                                  |
-| `web`     | sqlite / postgres | Full-stack web app with HTMX, jobs, email, auth, uploads, and i18n |
-| `worker`  | sqlite / postgres | Background-job worker with no HTTP handlers                        |
+| Template  | Database          | Description                                                              |
+| --------- | ----------------- | ------------------------------------------------------------------------ |
+| `minimal` | none              | Bare-bones project with configuration only, no database                  |
+| `api`     | sqlite / postgres | JSON API with handlers and models                                        |
+| `web`     | sqlite / postgres | Full-stack web app with HTMX, Tailwind CSS, jobs, email, auth, and i18n  |
+| `worker`  | sqlite / postgres | Background-job worker with no HTTP handlers                              |
 
 ### Examples
 
@@ -58,11 +56,10 @@ Create a JSON API project backed by PostgreSQL:
 modo new my-api --template api --postgres
 ```
 
-Create a full-stack web app:
+Create a full-stack web app (default template, SQLite):
 
 ```bash
 modo new my-app
-# equivalent to: modo new my-app --template web --sqlite
 ```
 
 Web app with PostgreSQL and S3 storage:
@@ -78,7 +75,7 @@ The CLI prints the recommended next steps. For a `web` project:
 ```
 cd my-app
 just assets-download     # download HTMX, Alpine.js (first time only)
-just dev                 # start Docker, build CSS, run dev server
+just dev                 # start Docker services, build CSS, run dev server
 ```
 
 For other templates:
@@ -96,15 +93,38 @@ just dev
 
 ## What gets generated
 
-Every project receives a shared `CLAUDE.md` (AI coding instructions for the project) plus template-specific files:
+Every project receives shared files plus template-specific files. Shared files applied to all templates:
+
+- `.gitignore`
+- `CLAUDE.md` — AI coding instructions for the project
+
+Template-specific files (vary by template):
 
 - `Cargo.toml` — pre-configured with the selected modo crates
 - `src/main.rs` — application entry point
 - `src/config.rs` — typed configuration struct
 - `config/development.yaml` and `config/production.yaml`
 - `.env` and `.env.example`
-- `.gitignore`
 - `justfile` — development task runner
-- `docker-compose.yaml` — development services (Mailpit for email; PostgreSQL when `--postgres`; RustFS when `--s3`)
+
+The `api` and `web` templates also generate `src/handlers/` and `src/models/`. The `web` template additionally generates `src/views/`, `src/tasks/`, `assets/`, `templates/`, and `locales/`. The `worker` template generates `src/tasks/`.
+
+A `docker-compose.yaml` is generated when it has content to include:
+
+- `web` template: always includes Mailpit (email); adds Postgres when `--postgres`; adds RustFS when `--s3`
+- `api` and `worker` templates: only when `--postgres` is passed (Postgres only)
+- `minimal` template: never generated
 
 A `git init` is run automatically in the new directory after scaffolding.
+
+## Template variables
+
+Templates are rendered with [MiniJinja](https://docs.rs/minijinja). The scaffold-time variables available in `.jinja` files are:
+
+| Variable       | Type    | Description                                                  |
+| -------------- | ------- | ------------------------------------------------------------ |
+| `project_name` | string  | The project name passed to `modo new`                        |
+| `db_driver`    | string  | `"sqlite"`, `"postgres"`, or `""` for templates without a DB |
+| `s3`           | boolean | `true` when `--s3` is passed                                 |
+
+Email templates under `templates/emails/` use `{% raw %}...{% endraw %}` blocks to preserve runtime Jinja variables (such as `{{name}}` and `{{subject}}`) so they are not consumed during scaffolding.

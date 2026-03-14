@@ -16,13 +16,14 @@ Database integration for the modo framework. Provides SeaORM-backed connection p
 `DatabaseConfig` is deserialized from your app's YAML config. The backend is auto-detected from the URL scheme.
 
 ```rust
+use modo::AppConfig;
 use modo_db::DatabaseConfig;
 use serde::Deserialize;
 
 #[derive(Default, Deserialize)]
 struct Config {
     #[serde(flatten)]
-    core: modo::config::AppConfig,
+    core: AppConfig,
     database: DatabaseConfig,
 }
 ```
@@ -59,7 +60,7 @@ async fn main(
 
 #### Group-scoped sync
 
-Use `sync_and_migrate_group` to sync only entities and migrations belonging to a named group. This is useful when entities in a group live in a separate database (e.g. SQLite jobs database):
+Use `sync_and_migrate_group` to sync only entities and migrations belonging to a named group. This is useful when entities in a group live in a separate database (e.g. a dedicated jobs database):
 
 ```rust
 let jobs_db = modo_db::connect(&config.jobs_database).await?;
@@ -116,27 +117,51 @@ The macro creates a submodule named after the struct in snake_case (e.g. `todo`)
 
 ### Versioned migrations
 
-Use `#[modo_db::migration]` for escape-hatch SQL that schema sync cannot express (e.g. data migrations, renaming columns).
+Use `#[modo_db::migration]` for changes that schema sync cannot express (e.g. data seeding, backfills, renaming columns).
+
+The `db` parameter implements `ConnectionTrait`, so you can use the full SeaORM typed API:
 
 ```rust
-#[modo_db::migration(version = 1, description = "Backfill slugs")]
-async fn backfill_slugs(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error> {
-    db.execute_unprepared("UPDATE todos SET title = LOWER(title)")
+#[modo_db::migration(version = 1, description = "Seed default roles")]
+async fn seed_default_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error> {
+    use sea_orm::{ActiveModelTrait, Set};
+
+    for name in ["admin", "user"] {
+        role::ActiveModel {
+            name: Set(name.to_owned()),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
+    }
+    Ok(())
+}
+```
+
+Raw SQL is also available for DDL operations that SeaORM cannot express:
+
+```rust
+#[modo_db::migration(version = 2, description = "Add full-text index")]
+async fn add_fts_index(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Error> {
+    use sea_orm::ConnectionTrait;
+
+    db.execute_unprepared("CREATE INDEX IF NOT EXISTS idx_todos_title ON todos(title)")
         .await
         .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
     Ok(())
 }
 ```
 
-Migrations are executed in ascending `version` order. Each version is recorded in `_modo_migrations` and runs exactly once.
+Migrations are executed in ascending `version` order. Each version is recorded in `_modo_migrations` and runs exactly once. Duplicate version numbers are detected at startup and cause an error.
 
 Migrations can also be assigned to a group with `group = "<name>"` so they only run when `sync_and_migrate_group` is called with the matching group.
 
 ### Extracting the pool in handlers
 
 ```rust
-use modo_db::Db;
 use modo::JsonResult;
+use modo_db::Db;
 
 #[modo::handler(GET, "/todos")]
 async fn list_todos(Db(db): Db) -> JsonResult<Vec<TodoResponse>> {
@@ -152,10 +177,15 @@ async fn list_todos(Db(db): Db) -> JsonResult<Vec<TodoResponse>> {
 #### Offset-based
 
 ```rust
-use modo_db::{Db, PageParams, paginate};
+use modo::JsonResult;
+use modo::extractor::QueryReq;
+use modo_db::{Db, PageParams, PageResult, paginate};
 
 #[modo::handler(GET, "/todos")]
-async fn list_todos(Db(db): Db, params: modo::axum::extract::Query<PageParams>) -> JsonResult<PageResult<TodoResponse>> {
+async fn list_todos(
+    Db(db): Db,
+    params: QueryReq<PageParams>,
+) -> JsonResult<PageResult<TodoResponse>> {
     use modo_db::sea_orm::EntityTrait;
     let result = paginate(todo::Entity::find(), &*db, &params).await
         .map_err(|e| modo::Error::internal(e.to_string()))?;
@@ -166,10 +196,15 @@ async fn list_todos(Db(db): Db, params: modo::axum::extract::Query<PageParams>) 
 #### Cursor-based
 
 ```rust
-use modo_db::{Db, CursorParams, paginate_cursor};
+use modo::JsonResult;
+use modo::extractor::QueryReq;
+use modo_db::{CursorParams, CursorResult, Db, paginate_cursor};
 
 #[modo::handler(GET, "/todos/cursor")]
-async fn list_cursor(Db(db): Db, params: modo::axum::extract::Query<CursorParams>) -> JsonResult<CursorResult<TodoResponse>> {
+async fn list_cursor(
+    Db(db): Db,
+    params: QueryReq<CursorParams>,
+) -> JsonResult<CursorResult<TodoResponse>> {
     use modo_db::sea_orm::EntityTrait;
     let result = paginate_cursor(
         todo::Entity::find(),
@@ -189,8 +224,8 @@ async fn list_cursor(Db(db): Db, params: modo::axum::extract::Query<CursorParams
 ### ID generation
 
 ```rust
-let ulid_id  = modo_db::generate_ulid();   // 26-char Crockford Base32
-let nano_id  = modo_db::generate_nanoid(); // 21-char NanoID
+let ulid_id = modo_db::generate_ulid();   // 26-char Crockford Base32
+let nano_id = modo_db::generate_nanoid(); // 21-char NanoID
 ```
 
 ## Key Types

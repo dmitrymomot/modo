@@ -1,7 +1,5 @@
 # modo-tenant
 
-[![docs.rs](https://img.shields.io/docsrs/modo-tenant)](https://docs.rs/modo-tenant)
-
 Multi-tenancy support for modo applications: resolve, cache, and extract the current tenant from any HTTP request signal.
 
 ## Features
@@ -18,13 +16,13 @@ Multi-tenancy support for modo applications: resolve, cache, and extract the cur
 use modo_tenant::HasTenantId;
 
 #[derive(Clone, serde::Serialize)]
-pub struct Tenant {
+pub struct MyTenant {
     pub id: String,
     pub slug: String,
     pub name: String,
 }
 
-impl HasTenantId for Tenant {
+impl HasTenantId for MyTenant {
     fn tenant_id(&self) -> &str {
         &self.id
     }
@@ -42,12 +40,12 @@ pub struct DbTenantResolver {
 }
 
 impl TenantResolver for DbTenantResolver {
-    type Tenant = Tenant;
+    type Tenant = MyTenant;
 
     async fn resolve(
         &self,
         parts: &Parts,
-    ) -> Result<Option<Tenant>, modo::Error> {
+    ) -> Result<Option<MyTenant>, modo::Error> {
         // Extract a signal from `parts` (subdomain, header, path, etc.)
         // and load the tenant from your database.
         // Return Ok(None) when no tenant matches.
@@ -56,14 +54,16 @@ impl TenantResolver for DbTenantResolver {
 }
 ```
 
-### Register with AppState
+### Register with AppBuilder
 
 ```rust
 use modo_tenant::TenantResolverService;
-use modo::app::{AppState, ServiceRegistry};
 
-let services = ServiceRegistry::new()
-    .with(TenantResolverService::new(DbTenantResolver { /* … */ }));
+#[modo::main]
+async fn main(app: modo::app::AppBuilder) {
+    let resolver = TenantResolverService::new(DbTenantResolver { /* … */ });
+    app.service(resolver).run().await;
+}
 ```
 
 ### Extract in handlers
@@ -79,7 +79,7 @@ async fn dashboard(tenant: Tenant<MyTenant>) {
 // Optional — never rejects; inner value is None when no tenant matches.
 async fn home(tenant: OptionalTenant<MyTenant>) {
     if let Some(t) = &*tenant {
-        println!("logged-in tenant: {}", t.name);
+        println!("tenant: {}", t.name);
     }
 }
 ```
@@ -92,8 +92,8 @@ async fn home(tenant: OptionalTenant<MyTenant>) {
 use modo_tenant::{SubdomainResolver, TenantResolverService};
 
 let resolver = SubdomainResolver::new("myapp.com", |slug| async move {
-    // load tenant by slug from DB
-    Ok(Some(my_tenant))
+    // load tenant by slug from DB; return Ok(None) when not found
+    Ok::<Option<MyTenant>, modo::Error>(None)
 });
 let svc = TenantResolverService::new(resolver);
 ```
@@ -106,8 +106,8 @@ let svc = TenantResolverService::new(resolver);
 use modo_tenant::{HeaderResolver, TenantResolverService};
 
 let resolver = HeaderResolver::new("x-tenant-id", |id| async move {
-    // load tenant by id from DB
-    Ok(Some(my_tenant))
+    // load tenant by id from DB; return Ok(None) when not found
+    Ok::<Option<MyTenant>, modo::Error>(None)
 });
 let svc = TenantResolverService::new(resolver);
 ```
@@ -120,8 +120,8 @@ The header value is trimmed of whitespace. Missing or whitespace-only headers re
 use modo_tenant::{PathPrefixResolver, TenantResolverService};
 
 let resolver = PathPrefixResolver::new(|slug| async move {
-    // load tenant by slug from DB
-    Ok(Some(my_tenant))
+    // load tenant by slug from DB; return Ok(None) when not found
+    Ok::<Option<MyTenant>, modo::Error>(None)
 });
 let svc = TenantResolverService::new(resolver);
 ```
@@ -133,20 +133,21 @@ let svc = TenantResolverService::new(resolver);
 ```rust
 use modo_tenant::{TenantContextLayer, TenantResolverService};
 
-let layer = TenantContextLayer::new(TenantResolverService::new(my_resolver));
-// Apply to a router or globally via AppBuilder
-let app = router.layer(layer);
+let svc = TenantResolverService::new(DbTenantResolver { /* … */ });
+let layer = TenantContextLayer::new(svc);
+// Apply globally via AppBuilder
+app.layer(layer);
 ```
 
-Inside templates the tenant is accessible as `{{ tenant.name }}`. Resolution errors are logged and silently swallowed so the request always continues.
+Inside templates the tenant is accessible as `{{ tenant.name }}`. Resolution errors are logged at `WARN` level and the request continues without a tenant in context.
 
 ## Key Types
 
 | Type | Description |
 |------|-------------|
-| `HasTenantId` | Trait a tenant type must implement to expose its ID. |
+| `HasTenantId` | Trait a tenant type must implement to expose its unique ID. |
 | `TenantResolver` | Trait for pluggable tenant resolution strategies. |
-| `TenantResolverService<T>` | Type-erased, cloneable wrapper registered in `AppState`. |
+| `TenantResolverService<T>` | Type-erased, cheaply cloneable wrapper registered via `AppBuilder::service()`. |
 | `Tenant<T>` | Extractor that requires a tenant; returns HTTP 404 when absent. |
 | `OptionalTenant<T>` | Extractor that yields `Option<T>`; never rejects on missing tenant. |
 | `SubdomainResolver<T, F>` | Resolves tenant from the subdomain of the `Host` header. |

@@ -2,18 +2,18 @@
 
 [![docs.rs](https://img.shields.io/docsrs/modo)](https://docs.rs/modo)
 
-Rust web framework for micro-SaaS applications. Single binary, compile-time route discovery, batteries included.
+Ergonomic Rust web framework for small monolithic apps. Single binary, compile-time route discovery, batteries included.
 
 ## Features
 
-| Feature        | Enables                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `templates`    | MiniJinja template engine, `ViewRenderer`, `ViewResponse`, `#[view]`, `#[template_function]`, `#[template_filter]` |
-| `csrf`         | Double-submit cookie CSRF protection middleware and `CsrfToken` extractor                                          |
-| `i18n`         | Translation store, `I18n` extractor, `#[t]` macro                                                                  |
-| `sse`          | Server-Sent Events (`SseEvent`, `SseBroadcastManager`, `Sse` extractor)                                            |
-| `static-fs`    | Filesystem static file serving (development)                                                                       |
-| `static-embed` | Embedded static files via `rust-embed` (production)                                                                |
+| Feature        | Enables                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `templates`    | MiniJinja template engine, `ViewRenderer`, `ViewResponse`, `#[view]`, `#[template_function]`, `#[template_filter]`    |
+| `csrf`         | Double-submit cookie CSRF protection middleware and `CsrfToken` extractor                                              |
+| `i18n`         | Translation store, `I18n` extractor, `#[t]` macro                                                                     |
+| `sse`          | Server-Sent Events (`SseEvent`, `SseBroadcastManager`, `Sse` extractor)                                               |
+| `static-fs`    | Filesystem static file serving (development)                                                                           |
+| `static-embed` | Embedded static files via `rust-embed` (production)                                                                    |
 
 ## Usage
 
@@ -45,7 +45,7 @@ async fn main(
 
 ```rust
 use modo::{HandlerResult, JsonResult};
-use modo::extractor::{Form, Json};
+use modo::extractor::{JsonReq, FormReq};
 
 #[derive(serde::Deserialize, modo::Sanitize, modo::Validate)]
 struct CreateUser {
@@ -59,7 +59,7 @@ struct CreateUser {
 }
 
 #[modo::handler(POST, "/users")]
-async fn create_user(body: Json<CreateUser>) -> JsonResult<&'static str> {
+async fn create_user(body: JsonReq<CreateUser>) -> JsonResult<&'static str> {
     body.validate()?;
     Ok(modo::Json("created"))
 }
@@ -102,7 +102,7 @@ async fn main(
 ### Cookies
 
 ```rust
-use modo::CookieManager;
+use modo::cookies::CookieManager;
 
 #[modo::handler(GET, "/set-cookie")]
 async fn set_cookie(mut cookies: CookieManager) -> CookieManager {
@@ -191,9 +191,11 @@ cookies:
 | `HandlerResult<T>` | `Result<T, Error>` alias for generic handlers                     |
 | `JsonResult<T>`    | `Result<Json<T>, Error>` alias for JSON API handlers              |
 | `CookieManager`    | Plain, signed, and encrypted cookie read/write extractor          |
+| `JsonReq<T>`       | JSON request extractor with auto-sanitization                     |
+| `FormReq<T>`       | Form request extractor with auto-sanitization                     |
 | `RequestId`        | ULID request ID injected by middleware and propagated via headers |
 | `ClientIp`         | Resolved client IP (supports trusted proxies and Cloudflare)      |
-| `RateLimitInfo`    | Rate limit headers info available as a request extractor          |
+| `RateLimitInfo`    | Rate limit header info available as a request extractor           |
 | `GracefulShutdown` | Trait for services that participate in shutdown sequencing        |
 | `ShutdownPhase`    | `Drain` (before user hooks) or `Close` (after user hooks)         |
 | `CorsConfig`       | CORS policy (mirror, list, custom, any)                           |

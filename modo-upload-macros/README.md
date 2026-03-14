@@ -1,7 +1,5 @@
 # modo-upload-macros
 
-[![docs.rs](https://img.shields.io/docsrs/modo-upload-macros)](https://docs.rs/modo-upload-macros)
-
 Procedural macro crate for `modo-upload`. Provides the `#[derive(FromMultipart)]` macro that generates
 `modo_upload::FromMultipart` implementations for structs, enabling automatic parsing and validation of
 `multipart/form-data` requests.
@@ -83,12 +81,12 @@ struct OrderForm {
 
 ### Integration with `MultipartForm` extractor
 
-In an axum/modo handler, use `MultipartForm<T>` from `modo_upload` to extract and validate the form:
+In a modo handler, use `MultipartForm<T>` from `modo_upload` to extract and validate the form:
 
 ```rust
+use std::sync::Arc;
+use modo::{Json, JsonResult, Service};
 use modo_upload::{FileStorage, FromMultipart, MultipartForm, UploadedFile};
-use modo::extractor::service::Service;
-use modo::JsonResult;
 
 #[derive(FromMultipart)]
 struct ProfileForm {
@@ -104,7 +102,7 @@ async fn update_profile(
 ) -> JsonResult<serde_json::Value> {
     form.validate()?;
     let stored = storage.store("avatars", &form.avatar).await?;
-    Ok(modo::Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "name": form.name,
         "avatar_path": stored.path,
     })))

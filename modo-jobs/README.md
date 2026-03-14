@@ -107,7 +107,11 @@ let jobs = modo_jobs::new(&jobs_db, &config.jobs)
 
 ### Enqueuing from HTTP Handlers
 
+`JobQueue` is an axum extractor that resolves from the registered `JobsHandle`.
+Use `JsonReq<T>` for sanitized request body extraction.
+
 ```rust
+use modo::extractor::JsonReq;
 use modo::{Json, JsonResult};
 use modo_jobs::JobQueue;
 use serde_json::{json, Value};
@@ -115,14 +119,12 @@ use serde_json::{json, Value};
 #[modo::handler(POST, "/welcome")]
 async fn enqueue_welcome(
     queue: JobQueue,
-    input: Json<WelcomePayload>,
+    input: JsonReq<WelcomePayload>,
 ) -> JsonResult<Value> {
     let job_id = SendWelcomeJob::enqueue(&queue, &input).await?;
     Ok(Json(json!({ "job_id": job_id.to_string() })))
 }
 ```
-
-`JobQueue` is an axum extractor — it resolves from the registered `JobsHandle`.
 
 ### Scheduled Enqueue
 
@@ -136,10 +138,10 @@ let job_id = SendWelcomeJob::enqueue_at(&queue, &payload, run_at).await?;
 `JobsConfig` can be deserialized from YAML:
 
 ```yaml
-poll_interval_secs: 1 # how often each queue polls (default: 1)
-stale_threshold_secs: 600 # re-queue jobs locked longer than this (default: 600)
-drain_timeout_secs: 30 # max wait during shutdown (default: 30)
-max_payload_bytes: null # payload size limit, null = unlimited (default: null)
+poll_interval_secs: 1       # how often each queue polls (default: 1)
+stale_threshold_secs: 600   # re-queue jobs locked longer than this (default: 600)
+drain_timeout_secs: 30      # max wait during shutdown (default: 30)
+max_payload_bytes: null     # payload size limit, null = unlimited (default: null)
 
 queues:
     - name: default
@@ -148,8 +150,8 @@ queues:
       concurrency: 2
 
 cleanup:
-    interval_secs: 3600 # how often cleanup runs (default: 3600)
-    retention_secs: 86400 # delete finished jobs older than this (default: 86400)
+    interval_secs: 3600     # how often cleanup runs (default: 3600)
+    retention_secs: 86400   # delete finished jobs older than this (default: 86400)
     statuses: [completed, dead, cancelled]
 ```
 
@@ -180,10 +182,10 @@ created alongside the table to support efficient atomic job claiming.
 
 ## `#[job]` Macro Parameters
 
-| Parameter      | Type                     | Default     | Notes                                                       |
-| -------------- | ------------------------ | ----------- | ----------------------------------------------------------- |
-| `queue`        | string                   | `"default"` | Must match a configured queue                               |
-| `priority`     | integer                  | `0`         | Higher = runs sooner                                        |
-| `max_attempts` | integer                  | `3`         | Retries before `dead`                                       |
+| Parameter      | Type                      | Default     | Notes                                                       |
+| -------------- | ------------------------- | ----------- | ----------------------------------------------------------- |
+| `queue`        | string                    | `"default"` | Must match a configured queue                               |
+| `priority`     | integer                   | `0`         | Higher = runs sooner                                        |
+| `max_attempts` | integer                   | `3`         | Retries before `dead`                                       |
 | `timeout`      | `"Xs"` / `"Xm"` / `"Xh"` | `"5m"`      | Per-execution timeout                                       |
-| `cron`         | cron expression          | —           | Mutually exclusive with `queue`, `priority`, `max_attempts` |
+| `cron`         | cron expression           | —           | Mutually exclusive with `queue`, `priority`, `max_attempts` |
