@@ -1,6 +1,6 @@
 # modo-db-macros
 
-[![docs.rs](https://img.shields.io/docsrs/modo-db-macros)](https://docs.rs/modo-db-macros)
+[\![docs.rs](https://img.shields.io/docsrs/modo-db-macros)](https://docs.rs/modo-db-macros)
 
 Procedural macros powering the `modo-db` entity and migration system.
 
@@ -12,8 +12,12 @@ This crate is an implementation detail of `modo-db`. Consume these macros throug
 
 ### `#[modo_db::entity(table = "...", group = "...")]`
 
-Transforms an annotated struct into a fully-formed SeaORM entity module and registers it
-with the `inventory` collector so `modo_db::sync_and_migrate` discovers it at startup.
+Transforms an annotated struct into a fully-formed domain model backed by a SeaORM entity
+module and registers it with the `inventory` collector so `modo_db::sync_and_migrate`
+discovers it at startup.
+
+The original struct is **preserved** as a first-class domain type. You work with the struct
+directly rather than with the SeaORM `Model`.
 
 The optional `group` parameter (defaults to `"default"`) assigns the entity to a named group.
 Entities in a group can be synced separately via `modo_db::sync_and_migrate_group`.
@@ -24,8 +28,8 @@ Place these as a second `#[entity(...)]` attribute on the struct itself.
 
 | Option                              | Effect                                                                                    |
 | ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `timestamps`                        | Injects `created_at` and `updated_at: DateTime<Utc>` columns; sets them in `before_save`. |
-| `soft_delete`                       | Injects `deleted_at: Option<DateTime<Utc>>` and generates query helpers on the module.    |
+| `timestamps`                        | Injects `created_at` and `updated_at: DateTime<Utc>` columns; sets them before insert/update. |
+| `soft_delete`                       | Injects `deleted_at: Option<DateTime<Utc>>` and generates soft-delete methods on the struct. |
 | `framework`                         | Marks the entity as framework-internal (hidden from user schema).                         |
 | `index(columns = ["col1", "col2"])` | Creates a composite index. Add `unique` inside for a unique index.                        |
 
@@ -51,18 +55,33 @@ Place these as `#[entity(...)]` on individual struct fields.
 | `via = "<JoinEntity>"`         | Many-to-many via a join entity. Used with `has_many` or `has_one`.               |
 | `renamed_from = "<old>"`       | Records a rename hint as a column comment.                                       |
 
-#### Generated module
+#### What the macro emits
 
-For a struct named `Foo`, the macro emits a `pub mod foo { ... }` containing:
+For a struct named `Foo`, the macro emits:
 
-- `Model` — the SeaORM model struct with all columns
-- `ActiveModel` — SeaORM active model
-- `Entity` — SeaORM entity type
-- `Column` — column enum
-- `Relation` — relation enum
-- `ActiveModelBehavior` impl — runs `before_save` when `timestamps` or `auto` is used
-- Soft-delete helpers (when `soft_delete` is set): `find`, `find_by_id`, `with_deleted`,
-  `only_deleted`, `soft_delete`, `restore`, `force_delete`
+- The original `Foo` struct with `#[derive(Clone, Debug, serde::Serialize)]`
+- `impl Default for Foo` — auto-generates IDs (ULID/NanoID), sets timestamps to `Utc::now()`,
+  uses type defaults for all other fields (`String::new()`, `false`, `0`, `None`, etc.)
+- `impl From<foo::Model> for Foo` — converts a SeaORM model to the domain struct
+- `pub mod foo { ... }` containing:
+  - `Model` — the SeaORM model struct with all columns
+  - `ActiveModel` — SeaORM active model
+  - `Entity` — SeaORM entity type
+  - `Column` — column enum
+  - `Relation` — relation enum
+  - `ActiveModelBehavior` impl — always empty; auto-ID and timestamp logic lives in
+    `Record::apply_auto_fields` instead
+- `impl modo_db::Record for Foo` — wires up `Entity`, `ActiveModel`, `from_model`,
+  `into_active_model_full`, `into_active_model`, and `apply_auto_fields`; also overrides
+  `find_all` and `query` to exclude soft-deleted rows when `soft_delete` is set
+- Inherent `impl Foo` with CRUD methods: `insert`, `update`, `delete`, `find_by_id`,
+  `delete_by_id`
+- Relation accessor methods (when relations are declared): e.g. `post.user(&db)`,
+  `user.posts(&db)`
+- Soft-delete methods on the struct (when `soft_delete` is set): `restore`, `force_delete`,
+  `force_delete_by_id`, `with_deleted`, `only_deleted`, `delete_many` (soft),
+  `force_delete_many` (hard)
+- An `inventory::submit\!` block that registers the entity for schema sync
 
 #### Basic entity example
 
@@ -76,6 +95,12 @@ pub struct Todo {
     #[entity(default_value = false)]
     pub completed: bool,
 }
+
+// Usage — struct-update syntax with generated Default:
+let todo = Todo {
+    title: "Buy milk".into(),
+    ..Default::default()  // id auto-generated, completed = false, timestamps = now()
+}.insert(&db).await?;
 ```
 
 #### Entity with relations
@@ -102,6 +127,10 @@ pub struct User {
     #[entity(has_many)]
     pub posts: (),
 }
+
+// Generated accessor methods:
+let author: Option<User> = post.user(&db).await?;
+let posts: Vec<Post> = user.posts(&db).await?;
 ```
 
 #### Composite index
@@ -143,7 +172,7 @@ async fn seed_default_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo
         }
         .insert(db)
         .await
-        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
+        .map_err(|e| modo::Error::internal(format\!("Migration failed: {e}")))?;
     }
     Ok(())
 }
