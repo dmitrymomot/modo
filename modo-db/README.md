@@ -1,6 +1,6 @@
 # modo-db
 
-[\![docs.rs](https://img.shields.io/docsrs/modo-db)](https://docs.rs/modo-db)
+[![docs.rs](https://img.shields.io/docsrs/modo-db)](https://docs.rs/modo-db)
 
 Database integration for the modo framework. Provides SeaORM-backed connection pooling, automatic schema synchronisation, versioned migrations, and a compile-time entity/migration registration system built on `inventory`.
 
@@ -123,12 +123,12 @@ let todo = Todo {
 
 #### Struct attributes
 
-| Attribute                                      | Effect                                                                         |
-| ---------------------------------------------- | ------------------------------------------------------------------------------ |
-| `#[entity(timestamps)]`                        | Appends `created_at` and `updated_at` (`DateTime<Utc>`)                        |
+| Attribute                                      | Effect                                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `#[entity(timestamps)]`                        | Appends `created_at` and `updated_at` (`DateTime<Utc>`)                                        |
 | `#[entity(soft_delete)]`                       | Appends `deleted_at` (`Option<DateTime<Utc>>`) and generates soft-delete methods on the struct |
-| `#[entity(index(columns = ["a", "b"]))]`       | Generates a composite index via `CREATE INDEX IF NOT EXISTS`                   |
-| `#[entity(index(columns = ["slug"], unique))]` | Generates a composite unique index                                             |
+| `#[entity(index(columns = ["a", "b"]))]`       | Generates a composite index via `CREATE INDEX IF NOT EXISTS`                                   |
+| `#[entity(index(columns = ["slug"], unique))]` | Generates a composite unique index                                                             |
 
 ### CRUD operations
 
@@ -325,7 +325,7 @@ impl User {
     }
 
     pub fn after_save(&self) -> Result<(), modo::Error> {
-        tracing::info\!(id = %self.id, "user saved");
+        tracing::info!(id = %self.id, "user saved");
         Ok(())
     }
 
@@ -447,7 +447,7 @@ use modo_db::Record;
 
 let mut am = todo.into_active_model();
 am.completed = Set(true);
-am.update(&*db).await.map_err(modo_db::db_err_to_error)?;
+am.update(&*db).await.map_err(|e| modo::Error::internal(e.to_string()))?;
 ```
 
 ### Escape hatch
@@ -480,7 +480,7 @@ let todos: Vec<Todo> = models.into_iter().map(Todo::from).collect();
 
 Use `#[modo_db::migration]` for changes that schema sync cannot express (e.g. data seeding, backfills, renaming columns).
 
-The `db` parameter implements `ConnectionTrait`, so you can use the full SeaORM typed API:
+The `db` parameter is a `&sea_orm::DatabaseConnection`, so you can use the full SeaORM typed API:
 
 ```rust,ignore
 #[modo_db::migration(version = 1, description = "Seed default roles")]
@@ -494,7 +494,7 @@ async fn seed_default_roles(db: &sea_orm::DatabaseConnection) -> Result<(), modo
         }
         .insert(db)
         .await
-        .map_err(|e| modo::Error::internal(format\!("Migration failed: {e}")))?;
+        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
     }
     Ok(())
 }
@@ -509,7 +509,7 @@ async fn add_fts_index(db: &sea_orm::DatabaseConnection) -> Result<(), modo::Err
 
     db.execute_unprepared("CREATE INDEX IF NOT EXISTS idx_todos_title ON todos(title)")
         .await
-        .map_err(|e| modo::Error::internal(format\!("Migration failed: {e}")))?;
+        .map_err(|e| modo::Error::internal(format!("Migration failed: {e}")))?;
     Ok(())
 }
 ```
@@ -541,4 +541,3 @@ let nano_id = modo_db::generate_nanoid(); // 21-char NanoID
 | `MigrationRegistration`               | Compile-time migration registry entry (produced by `#[migration]` macro)          |
 | `PageParams` / `PageResult<T>`        | Offset pagination request + response                                              |
 | `CursorParams<V>` / `CursorResult<T>` | Cursor pagination request + response                                              |
-| `db_err_to_error`                     | Converts `sea_orm::DbErr` to `modo::Error` (404 / 409 / 500)                     |

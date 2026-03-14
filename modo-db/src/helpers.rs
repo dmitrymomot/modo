@@ -18,12 +18,12 @@ where
     Ok(T::from_model(model))
 }
 
-/// The caller's `update` method mutates in place (`&mut self`) and returns
-/// `Result<(), _>`, while `insert` consumes and returns a new value.
-/// This asymmetry is intentional: insert generates new auto-fields (ID),
-/// so the caller needs the refreshed value, while update preserves identity.
-///
 /// Update an existing record. Calls `into_active_model_full`, `apply_auto_fields`, then SeaORM update.
+///
+/// The `update` method on the generated struct mutates in place (`&mut self`) and returns
+/// `Result<(), _>`, while `insert` consumes and returns a new value. This asymmetry is
+/// intentional: insert generates new auto-fields (ID), so the caller needs the refreshed
+/// value, while update preserves identity.
 ///
 /// Note: If a lifecycle hook (`after_save`) returns an error after
 /// this function succeeds, the database write has already committed.

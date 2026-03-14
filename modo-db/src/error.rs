@@ -5,12 +5,15 @@
 ///
 /// # Mapping
 ///
-/// | SeaORM error                    | HTTP status |
-/// |---------------------------------|-------------|
-/// | `UniqueConstraintViolation`     | 409 Conflict |
-/// | `ForeignKeyConstraintViolation` | 409 Conflict |
-/// | `RecordNotFound`                | 404 Not Found |
-/// | anything else                   | 500 Internal Server Error |
+/// | SeaORM error                                       | HTTP status          |
+/// |----------------------------------------------------|----------------------|
+/// | `SqlErr::UniqueConstraintViolation` (via `sql_err()`) | 409 Conflict      |
+/// | `SqlErr::ForeignKeyConstraintViolation` (via `sql_err()`) | 409 Conflict  |
+/// | `DbErr::RecordNotFound`                            | 404 Not Found        |
+/// | anything else                                      | 500 Internal Server Error |
+///
+/// Note: `UniqueConstraintViolation` is not a direct `DbErr` variant.
+/// It is accessed via `db_err.sql_err()` which returns `Option<SqlErr>`.
 pub fn db_err_to_error(e: sea_orm::DbErr) -> modo::Error {
     match e.sql_err() {
         Some(sea_orm::error::SqlErr::UniqueConstraintViolation(_)) => {
