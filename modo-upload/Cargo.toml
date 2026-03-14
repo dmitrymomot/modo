@@ -1,6 +1,6 @@
 [package]
 name = "modo-upload"
-version = "0.1.2"
+version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true

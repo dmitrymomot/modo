@@ -1,6 +1,6 @@
 [package]
 name = "modo-cli"
-version = "0.1.10"
+version.workspace = true
 edition = "2024"
 license.workspace = true
 repository.workspace = true
