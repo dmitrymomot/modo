@@ -60,9 +60,11 @@ impl TenantResolver for DbTenantResolver {
 use modo_tenant::TenantResolverService;
 
 #[modo::main]
-async fn main(app: modo::app::AppBuilder) {
+async fn main(
+    app: modo::app::AppBuilder,
+) -> Result<(), Box<dyn std::error::Error>> {
     let resolver = TenantResolverService::new(DbTenantResolver { /* … */ });
-    app.service(resolver).run().await;
+    app.service(resolver).run().await
 }
 ```
 
@@ -133,10 +135,14 @@ let svc = TenantResolverService::new(resolver);
 ```rust
 use modo_tenant::{TenantContextLayer, TenantResolverService};
 
-let svc = TenantResolverService::new(DbTenantResolver { /* … */ });
-let layer = TenantContextLayer::new(svc);
-// Apply globally via AppBuilder
-app.layer(layer);
+#[modo::main]
+async fn main(
+    app: modo::app::AppBuilder,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let svc = TenantResolverService::new(DbTenantResolver { /* … */ });
+    let layer = TenantContextLayer::new(svc);
+    app.layer(layer).run().await
+}
 ```
 
 Inside templates the tenant is accessible as `{{ tenant.name }}`. Resolution errors are logged at `WARN` level and the request continues without a tenant in context.

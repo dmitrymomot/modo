@@ -60,6 +60,12 @@ where
     }
 }
 
+/// Tower [`Service`] produced by [`TenantContextLayer`].
+///
+/// Resolves the tenant (using the per-request cache) and inserts it into the
+/// [`TemplateContext`] extension before delegating to the inner service.
+/// This type is an implementation detail — interact with it via
+/// [`TenantContextLayer`] instead.
 #[derive(Clone)]
 pub struct TenantContextMiddleware<S, T>
 where
