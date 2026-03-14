@@ -34,6 +34,10 @@ Rust web framework for small monolithic apps. Single binary, compile-time magic,
 - Versioning: all crates use `version.workspace = true` — bump version only in root `Cargo.toml`
 - Pluggable backends: wrap with `Arc<dyn Trait>` (not `Box`) for consistency across storage, transport, etc.
 - Middleware layer naming: use "ContextLayer" suffix for layers that inject template context (e.g. `SessionContextLayer`, `UserContextLayer`, `TenantContextLayer`)
+- modo-db CRUD: use Record trait methods on domain structs — `Todo::find_by_id(&id, &*db)`, `todo.insert(&*db)`, `todo.update(&*db)`, `todo.delete(&*db)` — NOT raw SeaORM `ActiveModel`/`Entity::find()`
+- modo-db queries: use `Todo::query().filter(...).all(&*db)` (returns domain types) — fall back to raw SeaORM via `.into_select()` only when needed
+- modo-db `find_by_id` returns `Result<T, Error>` with auto-404 — no `.ok_or(NotFound)?` needed
+- modo-db `update(&mut self)` refreshes all fields from DB after write — no re-fetch needed
 
 ## Gotchas
 
@@ -60,4 +64,5 @@ Rust web framework for small monolithic apps. Single binary, compile-time magic,
 - SeaORM error conversion: can't `impl From<DbErr> for modo::Error` in `modo-db` (orphan rule) — use `db_err_to_error()` helper function instead
 - SeaORM `UpdateMany`: no `.set(col, val)` method — use `.col_expr(col, Expr::value(val))` instead
 - `just test` may fail in sandboxed environments (missing `/tmp` dir) — run with `TMPDIR` set or outside sandbox
+- `#[template_function]` / `#[template_filter]` name override: use `name = "alias"` syntax — bare string `("alias")` does NOT work
 - Publish workflow (`.github/workflows/publish.yml`) uses single workspace version — compares root `Cargo.toml` version against crates.io, publishes all or none
