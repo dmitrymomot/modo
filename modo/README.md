@@ -95,7 +95,7 @@ async fn main(
     config: modo::config::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = MyDatabase { /* ... */ };
-    app.config(config).service(db).run().await
+    app.config(config).managed_service(db).run().await
 }
 ```
 

@@ -35,14 +35,15 @@
 //! Start the runner in `main` and register the handle as a managed service:
 //!
 //! ```rust,no_run
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(app: modo::app::AppBuilder) -> Result<(), Box<dyn std::error::Error>> {
 //! let db = modo_db::connect(&Default::default()).await?;
 //! let jobs = modo_jobs::new(&db, &Default::default())
 //!     .service(db.clone())
 //!     .run()
 //!     .await?;
 //!
-//! // app.managed_service(jobs) registers for graceful shutdown
+//! // Both DbPool and JobsHandle implement GracefulShutdown
+//! app.managed_service(db).managed_service(jobs).run().await?;
 //! # Ok(())
 //! # }
 //! ```
