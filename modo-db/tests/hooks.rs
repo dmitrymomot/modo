@@ -246,6 +246,22 @@ async fn test_after_save_error_propagates() {
         modo::axum::http::StatusCode::UNPROCESSABLE_ENTITY,
         "after_save error should propagate with correct status"
     );
+
+    // The row was committed to DB before after_save ran — verify the orphaned row exists.
+    // This demonstrates the documented transactional gap: the insert succeeds,
+    // but after_save returns an error, so the caller sees Err while the row persists.
+    use modo_db::Record as _;
+    use modo_db::sea_orm::ColumnTrait;
+    let orphaned = AuditItem::query()
+        .filter(audit_item::Column::Name.eq(""))
+        .all(&db)
+        .await
+        .unwrap();
+    assert_eq!(
+        orphaned.len(),
+        1,
+        "row should exist in DB despite after_save error (transactional gap)"
+    );
 }
 
 #[tokio::test]

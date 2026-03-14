@@ -1318,7 +1318,7 @@ fn gen_pk_methods(
 fn gen_string_pk_methods(
     mod_name: &Ident,
     struct_attrs: &StructAttrs,
-    pk_col_pascal: &Ident,
+    _pk_col_pascal: &Ident,
 ) -> (TokenStream, TokenStream) {
     let find_body = if struct_attrs.soft_delete {
         quote! {
@@ -1345,37 +1345,11 @@ fn gen_string_pk_methods(
         }
     };
 
-    let delete_body = if struct_attrs.soft_delete {
-        let updated_at_expr = if struct_attrs.timestamps {
-            quote! {
-                .col_expr(#mod_name::Column::UpdatedAt, modo_db::sea_orm::sea_query::Expr::value(now))
-            }
-        } else {
-            quote! {}
-        };
-        quote! {
-            use modo_db::sea_orm::EntityTrait;
-            use modo_db::sea_orm::ColumnTrait;
-            use modo_db::sea_orm::QueryFilter;
-            let now = modo_db::chrono::Utc::now();
-            let result = #mod_name::Entity::update_many()
-                .filter(#mod_name::Column::#pk_col_pascal.eq(id))
-                .filter(#mod_name::Column::DeletedAt.is_null())
-                .col_expr(#mod_name::Column::DeletedAt, modo_db::sea_orm::sea_query::Expr::value(Some(now)))
-                #updated_at_expr
-                .exec(db)
-                .await
-                .map_err(modo_db::db_err_to_error)?;
-            if result.rows_affected == 0 {
-                return Err(modo::Error::from(modo::HttpError::NotFound));
-            }
-            Ok(())
-        }
-    } else {
-        quote! {
-            let record = Self::find_by_id(id, db).await?;
-            record.delete(db).await
-        }
+    // delete_by_id always loads the record to invoke the before_delete hook.
+    // For soft-delete entities, this delegates to record.delete() which does soft-delete.
+    let delete_body = quote! {
+        let record = Self::find_by_id(id, db).await?;
+        record.delete(db).await
     };
 
     (
@@ -1385,6 +1359,7 @@ fn gen_string_pk_methods(
             }
         },
         quote! {
+            /// Delete a record by ID. Loads the record first to invoke `before_delete`.
             pub async fn delete_by_id(id: &str, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
                 #delete_body
             }
@@ -1397,7 +1372,7 @@ fn gen_typed_pk_methods(
     mod_name: &Ident,
     struct_attrs: &StructAttrs,
     pk_ty: &Type,
-    pk_col_pascal: &Ident,
+    _pk_col_pascal: &Ident,
 ) -> (TokenStream, TokenStream) {
     let find_body = if struct_attrs.soft_delete {
         quote! {
@@ -1424,37 +1399,10 @@ fn gen_typed_pk_methods(
         }
     };
 
-    let delete_body = if struct_attrs.soft_delete {
-        let updated_at_expr = if struct_attrs.timestamps {
-            quote! {
-                .col_expr(#mod_name::Column::UpdatedAt, modo_db::sea_orm::sea_query::Expr::value(now))
-            }
-        } else {
-            quote! {}
-        };
-        quote! {
-            use modo_db::sea_orm::EntityTrait;
-            use modo_db::sea_orm::ColumnTrait;
-            use modo_db::sea_orm::QueryFilter;
-            let now = modo_db::chrono::Utc::now();
-            let result = #mod_name::Entity::update_many()
-                .filter(#mod_name::Column::#pk_col_pascal.eq(id))
-                .filter(#mod_name::Column::DeletedAt.is_null())
-                .col_expr(#mod_name::Column::DeletedAt, modo_db::sea_orm::sea_query::Expr::value(Some(now)))
-                #updated_at_expr
-                .exec(db)
-                .await
-                .map_err(modo_db::db_err_to_error)?;
-            if result.rows_affected == 0 {
-                return Err(modo::Error::from(modo::HttpError::NotFound));
-            }
-            Ok(())
-        }
-    } else {
-        quote! {
-            let record = Self::find_by_id(id, db).await?;
-            record.delete(db).await
-        }
+    // delete_by_id always loads the record to invoke the before_delete hook.
+    let delete_body = quote! {
+        let record = Self::find_by_id(id, db).await?;
+        record.delete(db).await
     };
 
     (
@@ -1504,51 +1452,10 @@ fn gen_composite_pk_methods(
         }
     };
 
-    let delete_body = if struct_attrs.soft_delete {
-        let pk_names: Vec<&Ident> = pk_fields.iter().map(|f| &f.name).collect();
-        let pk_col_pascals: Vec<Ident> = pk_names
-            .iter()
-            .map(|n| format_ident!("{}", to_pascal_case(&n.to_string())))
-            .collect();
-        let pk_indices: Vec<syn::Index> = (0..pk_fields.len()).map(syn::Index::from).collect();
-
-        let updated_at_expr = if struct_attrs.timestamps {
-            quote! {
-                .col_expr(#mod_name::Column::UpdatedAt, modo_db::sea_orm::sea_query::Expr::value(now))
-            }
-        } else {
-            quote! {}
-        };
-
-        quote! {
-            use modo_db::sea_orm::EntityTrait;
-            use modo_db::sea_orm::ColumnTrait;
-            use modo_db::sea_orm::QueryFilter;
-            let now = modo_db::chrono::Utc::now();
-            let mut update = #mod_name::Entity::update_many();
-            #(
-                update = modo_db::sea_orm::QueryFilter::filter(
-                    update,
-                    #mod_name::Column::#pk_col_pascals.eq(id.#pk_indices.clone()),
-                );
-            )*
-            let result = update
-                .filter(#mod_name::Column::DeletedAt.is_null())
-                .col_expr(#mod_name::Column::DeletedAt, modo_db::sea_orm::sea_query::Expr::value(Some(now)))
-                #updated_at_expr
-                .exec(db)
-                .await
-                .map_err(modo_db::db_err_to_error)?;
-            if result.rows_affected == 0 {
-                return Err(modo::Error::from(modo::HttpError::NotFound));
-            }
-            Ok(())
-        }
-    } else {
-        quote! {
-            let record = Self::find_by_id(id, db).await?;
-            record.delete(db).await
-        }
+    // delete_by_id always loads the record to invoke the before_delete hook.
+    let delete_body = quote! {
+        let record = Self::find_by_id(id, db).await?;
+        record.delete(db).await
     };
 
     (
@@ -1574,31 +1481,35 @@ fn gen_force_delete_by_id(pk_fields: &[&ParsedField], mod_name: &Ident) -> Token
         if is_string_pk {
             quote! {
                 /// Permanently delete a record by ID, bypassing soft-delete.
+                ///
+                /// Loads the record first to invoke the `before_delete` hook.
+                /// Finds any record regardless of soft-delete status.
                 pub async fn force_delete_by_id(id: &str, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
                     use modo_db::sea_orm::EntityTrait;
-                    use modo_db::sea_orm::ModelTrait;
-                    let model = #mod_name::Entity::find_by_id(id)
+                    let record = #mod_name::Entity::find_by_id(id)
                         .one(db)
                         .await
                         .map_err(modo_db::db_err_to_error)?
+                        .map(Self::from)
                         .ok_or_else(|| modo::Error::from(modo::HttpError::NotFound))?;
-                    model.delete(db).await.map_err(modo_db::db_err_to_error)?;
-                    Ok(())
+                    record.force_delete(db).await
                 }
             }
         } else {
             quote! {
                 /// Permanently delete a record by ID, bypassing soft-delete.
+                ///
+                /// Loads the record first to invoke the `before_delete` hook.
+                /// Finds any record regardless of soft-delete status.
                 pub async fn force_delete_by_id(id: #pk_ty, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
                     use modo_db::sea_orm::EntityTrait;
-                    use modo_db::sea_orm::ModelTrait;
-                    let model = #mod_name::Entity::find_by_id(id)
+                    let record = #mod_name::Entity::find_by_id(id)
                         .one(db)
                         .await
                         .map_err(modo_db::db_err_to_error)?
+                        .map(Self::from)
                         .ok_or_else(|| modo::Error::from(modo::HttpError::NotFound))?;
-                    model.delete(db).await.map_err(modo_db::db_err_to_error)?;
-                    Ok(())
+                    record.force_delete(db).await
                 }
             }
         }
@@ -1606,16 +1517,18 @@ fn gen_force_delete_by_id(pk_fields: &[&ParsedField], mod_name: &Ident) -> Token
         let pk_types: Vec<&Type> = pk_fields.iter().map(|f| &f.ty).collect();
         quote! {
             /// Permanently delete a record by composite ID, bypassing soft-delete.
+            ///
+            /// Loads the record first to invoke the `before_delete` hook.
+            /// Finds any record regardless of soft-delete status.
             pub async fn force_delete_by_id(id: (#(#pk_types),*), db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
                 use modo_db::sea_orm::EntityTrait;
-                use modo_db::sea_orm::ModelTrait;
-                let model = #mod_name::Entity::find_by_id(id)
+                let record = #mod_name::Entity::find_by_id(id)
                     .one(db)
                     .await
                     .map_err(modo_db::db_err_to_error)?
+                    .map(Self::from)
                     .ok_or_else(|| modo::Error::from(modo::HttpError::NotFound))?;
-                model.delete(db).await.map_err(modo_db::db_err_to_error)?;
-                Ok(())
+                record.force_delete(db).await
             }
         }
     }

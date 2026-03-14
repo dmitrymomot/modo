@@ -40,8 +40,8 @@ where
 
 /// Delete a record. Calls `into_active_model` (PK only), then SeaORM delete.
 ///
-/// Note: `delete_by_id` loads the full record first to invoke the
-/// `before_delete` lifecycle hook before deletion.
+/// Both `delete_by_id` and `force_delete_by_id` load the full record
+/// first to invoke the `before_delete` lifecycle hook before deletion.
 pub async fn do_delete<T: Record>(record: T, db: &impl ConnectionTrait) -> Result<(), modo::Error> {
     let am = record.into_active_model();
     am.delete(db).await.map_err(db_err_to_error)?;
