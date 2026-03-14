@@ -48,14 +48,14 @@ pub type JsonResult<T, E = Error> = Result<axum::Json<T>, E>;
 pub type ViewResult<E = Error> = Result<crate::templates::ViewResponse, E>;
 ```
 
-Source: `modo/src/error.rs`, lines 330–339.
+Source: `modo/src/error.rs`, lines 335–346.
 
 ### When to Use Which
 
 | Scenario | Return type |
 |---|---|
 | JSON REST API endpoint | `JsonResult<T>` |
-| HTMX or server-rendered HTML | `ViewResult<>` |
+| HTMX or server-rendered HTML | `ViewResult` |
 | Response with custom status, redirect, stream | `HandlerResult<impl IntoResponse>` |
 | Handler with a custom domain error type | `JsonResult<T, MyError>` |
 
@@ -191,7 +191,7 @@ Source: `modo/src/app.rs`, lines 545–552.
 
 ```rust
 #[modo::main]
-async fn main(app: AppBuilder, config: AppConfig) {
+async fn main(app: modo::app::AppBuilder, config: AppConfig) {
     app
         // Register a service accessible via Service<T> extractor
         .service(my_db_pool)
@@ -363,15 +363,21 @@ All `pub use` re-exports in `modo/src/lib.rs` must be sorted alphabetically. `ca
 
 Current public re-exports (from `lib.rs`):
 - `axum::Json` — the canonical JSON responder (re-exported as `modo::Json`)
-- `AppConfig`, `HttpConfig`, `RateLimitConfig`, `SecurityHeadersConfig`, `TrailingSlash`
+- `AppBuilder`, `AppState`, `ServiceRegistry`
+- `AppConfig`, `HttpConfig`, `RateLimitConfig`, `SecurityHeadersConfig`, `ServerConfig`, `TrailingSlash`
 - `CookieConfig`, `CookieManager`, `CookieOptions`, `SameSite`
 - `CorsConfig`
+- `CsrfConfig`, `CsrfToken` (behind `#[cfg(feature = "csrf")]`)
 - `Error`, `ErrorContext`, `ErrorHandlerFn`, `ErrorHandlerRegistration`, `HandlerResult`, `HttpError`, `JsonResult`
 - `ViewResult` (behind `#[cfg(feature = "templates")]`)
+- `Service`
+- `I18n`, `I18nConfig` (behind `#[cfg(feature = "i18n")]`)
 - `ClientIp`, `RateLimitInfo`
 - `RequestId`
+- `Method`
+- `Sanitize`, `Validate`
 - `GracefulShutdown`, `ShutdownPhase`
-- `ViewRender`, `ViewRenderer`, `ViewResponse` (behind `#[cfg(feature = "templates")]`)
+- `TemplateConfig`, `TemplateContext`, `TemplateEngine`, `ViewRender`, `ViewRenderer`, `ViewResponse` (behind `#[cfg(feature = "templates")]`)
 
 ### Use `modo::Json` for Responses, `modo::extractor::JsonReq` for Requests
 

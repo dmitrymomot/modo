@@ -194,7 +194,7 @@ Template usage:
 
 The macro uses the function name as the template function name by default. Override:
 ```rust
-#[modo::template_function("my_alias")]
+#[modo::template_function(name = "my_alias")]
 fn some_fn(...) -> ...
 ```
 

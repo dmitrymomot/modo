@@ -53,17 +53,19 @@ pub struct Config {
 Example YAML:
 
 ```yaml
-url: "sqlite://data/main.db?mode=rwc"
-max_connections: 5
-min_connections: 1
+database:
+  url: "sqlite://data/main.db?mode=rwc"
+  max_connections: 5
+  min_connections: 1
 ```
 
 For PostgreSQL:
 
 ```yaml
-url: "postgres://user:pass@localhost/myapp"
-max_connections: 10
-min_connections: 2
+database:
+  url: "postgres://user:pass@localhost/myapp"
+  max_connections: 10
+  min_connections: 2
 ```
 
 ### Connecting and registering
@@ -80,7 +82,7 @@ async fn main(
 }
 ```
 
-`modo_db::connect` returns a `DbPool`. Pass it to `app.managed_service(db)` — this registers
+`modo_db::connect` returns a `DbPool`. Pass it to `app.managed_service(db)` -- this registers
 the pool in the service registry and hooks it into graceful shutdown (closes connections on
 `SIGTERM`/`SIGINT`).
 
@@ -92,9 +94,12 @@ pending versioned migrations. Call it once at startup, before `app.run()`.
 ## Entity Definition
 
 Use the `#[modo_db::entity(table = "...")]` attribute macro on a plain Rust struct. The macro
-generates a complete SeaORM entity module (model, active model, relation enum, registration)
-and submits an `EntityRegistration` to the `inventory` collector so schema sync discovers it
-automatically at startup.
+preserves the original struct as a domain type (with auto-derived `Clone`, `Debug`, `Serialize`,
+`Default`, `From<Model>`) and generates:
+
+- A SeaORM entity submodule (`Model`, `ActiveModel`, `Entity`, `Column`, `Relation`)
+- A `Record` trait implementation with CRUD methods directly on the struct
+- An `EntityRegistration` submitted to `inventory` for auto-discovery at startup
 
 ### Basic entity
 
@@ -115,19 +120,19 @@ Inside it: `Model`, `ActiveModel`, `Entity`, `Column`, `Relation`, and `ActiveMo
 
 ### Macro arguments
 
-**`#[modo_db::entity(...)]`** (outer attribute — table-level):
+**`#[modo_db::entity(...)]`** (outer attribute -- table-level):
 
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `table = "<name>"` | Yes | SQL table name |
 | `group = "<name>"` | No | Named group for multi-database setups (default: `"default"`) |
 
-**`#[entity(...)]`** (second attribute — struct-level options):
+**`#[entity(...)]`** (second attribute -- struct-level options):
 
 | Option | Description |
 |--------|-------------|
-| `timestamps` | Injects `created_at` and `updated_at: DateTime<Utc>`. Set automatically in `before_save`. Do not declare these fields manually. |
-| `soft_delete` | Injects `deleted_at: Option<DateTime<Utc>>`. Generates `find`, `find_by_id`, `with_deleted`, `only_deleted`, `soft_delete`, `restore`, and `force_delete` helpers. |
+| `timestamps` | Injects `created_at` and `updated_at: DateTime<Utc>`. Set automatically on insert/update. Do not declare these fields manually. |
+| `soft_delete` | Injects `deleted_at: Option<DateTime<Utc>>`. Makes `.delete()` a soft-delete, auto-filters standard queries, generates restore/force-delete methods. |
 | `framework` | Marks entity as framework-internal (non-user schema). |
 | `index(columns = ["col1", "col2"])` | Creates a composite index. Add `unique` to make it a unique index. |
 
@@ -142,53 +147,763 @@ Applied as `#[entity(...)]` on individual struct fields:
 | `auto = "ulid"\|"nanoid"` | Generates a ULID or NanoID before insert. Only valid on `primary_key` fields. |
 | `unique` | Adds a unique constraint |
 | `indexed` | Creates a single-column index |
-| `nullable` | Accepted but has no effect — SeaORM infers nullability from `Option<T>` |
+| `nullable` | Accepted but has no effect -- SeaORM infers nullability from `Option<T>` |
 | `column_type = "<type>"` | Overrides the inferred SeaORM column type string |
 | `default_value = <literal>` | Sets a column default value |
 | `default_expr = "<expr>"` | Sets a default SQL expression string |
 | `belongs_to = "<Entity>"` | Declares a `BelongsTo` relation to the named entity |
+| `to_column = "<Column>"` | Overrides target column for `belongs_to` FK (default: `"Id"`) |
 | `on_delete = "<action>"` | FK action on delete: `Cascade`, `SetNull`, `Restrict`, `NoAction`, `SetDefault` |
 | `on_update = "<action>"` | FK action on update: same values as `on_delete` |
 | `has_many` | Declares a `HasMany` relation (field excluded from model) |
 | `has_one` | Declares a `HasOne` relation (field excluded from model) |
 | `via = "<JoinEntity>"` | Used with `has_many`/`has_one` for many-to-many through a join entity |
+| `target = "<Entity>"` | Overrides inferred target entity name for `has_many`/`has_one` |
 | `renamed_from = "<old_name>"` | Records a rename hint as a column comment |
-
-### Soft-delete helpers
-
-When `soft_delete` is set, the generated entity module exposes:
-
-```rust
-// Excludes soft-deleted records (deleted_at IS NULL)
-todo::find()
-todo::find_by_id(id)
-
-// All records including soft-deleted
-todo::with_deleted()
-
-// Only soft-deleted records
-todo::only_deleted()
-
-// Soft-delete a record (sets deleted_at to now)
-todo::soft_delete(active_model, &db).await?;
-
-// Restore a soft-deleted record (clears deleted_at)
-todo::restore(active_model, &db).await?;
-
-// Permanently delete (hard delete)
-todo::force_delete(model, &db).await?;
-```
 
 ### ID generation
 
-The `auto = "ulid"` and `auto = "nanoid"` options on a primary key field cause the
-`ActiveModelBehavior::before_save` hook to call `modo_db::generate_ulid()` or
-`modo_db::generate_nanoid()` before insert if the field is not already set.
+The `auto = "ulid"` and `auto = "nanoid"` options on a primary key field cause
+`Record::apply_auto_fields` to call `modo_db::generate_ulid()` or
+`modo_db::generate_nanoid()` before insert if the field is empty or not set. The `Default`
+impl for the struct also calls the generator, so `Todo::default()` produces a struct with a
+fresh ULID/NanoID.
 
-- `generate_ulid()` — 26-character Crockford Base32 ULID
-- `generate_nanoid()` — 21-character NanoID (default alphabet)
+- `generate_ulid()` -- 26-character Crockford Base32 ULID
+- `generate_nanoid()` -- 21-character NanoID (default alphabet)
 
 Session IDs and most entity IDs in modo use ULID. Do not use UUID.
+
+---
+
+## Record Trait
+
+The `#[modo_db::entity]` macro implements the `Record` trait on your domain struct. This trait
+is the foundation for all generated CRUD and query methods. You never implement `Record` by
+hand -- the macro does it.
+
+### What the macro generates on your struct
+
+Given this entity:
+
+```rust
+#[modo_db::entity(table = "todos")]
+#[entity(timestamps)]
+pub struct Todo {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    pub title: String,
+    #[entity(default_value = false)]
+    pub completed: bool,
+}
+```
+
+The macro generates these methods directly on `Todo`:
+
+```rust
+impl Todo {
+    // --- Find ---
+    pub async fn find_by_id(id: &str, db: &impl ConnectionTrait) -> Result<Self, modo::Error>;
+    pub async fn find_all(db: &impl ConnectionTrait) -> Result<Vec<Self>, modo::Error>;
+
+    // --- Query builder ---
+    pub fn query() -> EntityQuery<Self, todo::Entity>;
+
+    // --- Insert ---
+    pub async fn insert(self, db: &impl ConnectionTrait) -> Result<Self, modo::Error>;
+
+    // --- Update ---
+    pub async fn update(&mut self, db: &impl ConnectionTrait) -> Result<(), modo::Error>;
+
+    // --- Delete ---
+    pub async fn delete(self, db: &impl ConnectionTrait) -> Result<(), modo::Error>;
+    pub async fn delete_by_id(id: &str, db: &impl ConnectionTrait) -> Result<(), modo::Error>;
+
+    // --- Bulk operations ---
+    pub fn update_many() -> EntityUpdateMany<todo::Entity>;
+    pub fn delete_many() -> EntityDeleteMany<todo::Entity>;
+}
+```
+
+Key differences from raw SeaORM:
+- Methods live on the domain struct, not the entity module
+- `find_by_id` returns `Result<Todo, Error>` (404 on not found), not `Option<Model>`
+- `insert` returns the domain struct with auto-generated fields populated
+- `update` mutates `&mut self` in place -- no need to convert to/from `ActiveModel`
+- All methods handle error conversion automatically via `db_err_to_error()`
+
+---
+
+## CRUD Patterns
+
+### Create
+
+```rust
+use modo::extractor::JsonReq;
+use modo::{Json, JsonResult};
+use modo_db::Db;
+
+#[modo::handler(POST, "/todos")]
+async fn create_todo(
+    Db(db): Db,
+    input: JsonReq<CreateTodo>,
+) -> JsonResult<TodoResponse> {
+    input.validate()?;
+    let todo = Todo {
+        title: input.title.clone(),
+        ..Default::default()  // auto-generates ULID, sets timestamps
+    }
+    .insert(&*db)
+    .await?;
+    Ok(Json(TodoResponse::from(todo)))
+}
+```
+
+- Use `..Default::default()` to fill auto-fields (ULID, timestamps).
+- `.insert(&*db)` returns the inserted domain struct with all fields populated.
+- No `ActiveModel`, `Set()`, or `sea_orm` imports needed.
+
+### Read (single)
+
+```rust
+#[modo::handler(GET, "/todos/{id}")]
+async fn get_todo(Db(db): Db, id: String) -> JsonResult<TodoResponse> {
+    let todo = Todo::find_by_id(&id, &*db).await?;
+    Ok(Json(TodoResponse::from(todo)))
+}
+```
+
+`find_by_id` returns `Result<Todo, modo::Error>`. If the record does not exist, it returns a
+404 Not Found error automatically -- no need for `.ok_or(HttpError::NotFound)?`.
+
+### Read (list)
+
+```rust
+#[modo::handler(GET, "/todos")]
+async fn list_todos(Db(db): Db) -> JsonResult<Vec<TodoResponse>> {
+    let todos = Todo::find_all(&*db).await?;
+    Ok(Json(todos.into_iter().map(TodoResponse::from).collect()))
+}
+```
+
+### Update
+
+```rust
+#[modo::handler(PATCH, "/todos/{id}")]
+async fn toggle_todo(Db(db): Db, id: String) -> JsonResult<TodoResponse> {
+    let mut todo = Todo::find_by_id(&id, &*db).await?;
+    todo.completed = !todo.completed;
+    todo.update(&*db).await?;
+    Ok(Json(TodoResponse::from(todo)))
+}
+```
+
+- Mutate the domain struct fields directly, then call `.update()`.
+- `update` refreshes all fields from the database after the write (picks up `updated_at`).
+- No `ActiveModel` conversion needed.
+
+### Delete
+
+```rust
+#[modo::handler(DELETE, "/todos/{id}")]
+async fn delete_todo(Db(db): Db, id: String) -> JsonResult<serde_json::Value> {
+    Todo::delete_by_id(&id, &*db).await?;
+    Ok(Json(serde_json::json!({"deleted": id})))
+}
+```
+
+Or load-then-delete when you need the data first:
+
+```rust
+let todo = Todo::find_by_id(&id, &*db).await?;
+// ... use todo fields ...
+todo.delete(&*db).await?;
+```
+
+`delete_by_id` loads the record first (triggering `before_delete` hooks), then deletes. For
+soft-delete entities, it sets `deleted_at` instead of hard-deleting.
+
+---
+
+## Query Builder
+
+`Todo::query()` returns an `EntityQuery<Todo, todo::Entity>` -- a chainable builder that converts
+results to domain types automatically.
+
+### Chainable methods
+
+```rust
+use modo_db::sea_orm::ColumnTrait;
+
+// Filter
+let incomplete = Todo::query()
+    .filter(todo::Column::Completed.eq(false))
+    .all(&*db)
+    .await?;
+
+// Order
+let newest = Todo::query()
+    .order_by_desc(todo::Column::CreatedAt)
+    .all(&*db)
+    .await?;
+
+// Filter + order + limit
+let top5 = Todo::query()
+    .filter(todo::Column::Completed.eq(false))
+    .order_by_desc(todo::Column::CreatedAt)
+    .limit(5)
+    .all(&*db)
+    .await?;
+```
+
+### Terminal methods
+
+```rust
+// Get all matching records
+let todos: Vec<Todo> = Todo::query().filter(...).all(&*db).await?;
+
+// Get first matching record (or None)
+let maybe: Option<Todo> = Todo::query().filter(...).one(&*db).await?;
+
+// Count matching records
+let n: u64 = Todo::query().filter(...).count(&*db).await?;
+```
+
+### Pagination (inline)
+
+```rust
+use modo_db::PageParams;
+
+let page: PageResult<Todo> = Todo::query()
+    .filter(todo::Column::Completed.eq(false))
+    .order_by_desc(todo::Column::CreatedAt)
+    .paginate(&*db, &PageParams { page: 1, per_page: 20 })
+    .await?;
+```
+
+```rust
+use modo_db::CursorParams;
+
+let page: CursorResult<Todo> = Todo::query()
+    .order_by_asc(todo::Column::Id)
+    .paginate_cursor(
+        todo::Column::Id,
+        |m| m.id.clone(),
+        &*db,
+        &CursorParams::default(),
+    )
+    .await?;
+```
+
+### Escape hatch to raw SeaORM
+
+When the `EntityQuery` builder is not expressive enough, unwrap to a raw SeaORM `Select`:
+
+```rust
+let select = Todo::query()
+    .filter(todo::Column::Completed.eq(false))
+    .into_select();  // -> Select<todo::Entity>
+
+// Now use any SeaORM v2 API directly
+let results = select
+    .inner_join(user::Entity)
+    .filter(user::Column::Active.eq(true))
+    .all(&*db)
+    .await
+    .map_err(modo_db::db_err_to_error)?;
+```
+
+You can also use the entity module directly for any raw SeaORM operation:
+
+```rust
+use modo_db::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+
+let models = todo::Entity::find()
+    .filter(todo::Column::Title.contains("urgent"))
+    .order_by_asc(todo::Column::CreatedAt)
+    .all(&*db)
+    .await
+    .map_err(modo_db::db_err_to_error)?;
+
+let todos: Vec<Todo> = models.into_iter().map(Todo::from).collect();
+```
+
+### Common traits for raw SeaORM queries
+
+| Trait | Purpose |
+|-------|---------|
+| `EntityTrait` | `find()`, `find_by_id()`, `insert()`, `delete_many()` |
+| `ActiveModelTrait` | `.insert()`, `.update()`, `.save()`, `.delete()` on `ActiveModel` |
+| `ModelTrait` | `.delete()`, `.into_active_model()` on `Model` |
+| `QueryFilter` | `.filter(...)` |
+| `QueryOrder` | `.order_by(...)` |
+| `ColumnTrait` | `.eq()`, `.ne()`, `.lt()`, `.gt()`, `.is_null()`, `.contains()`, etc. |
+
+Import these from `modo_db::sea_orm`.
+
+---
+
+## Bulk Operations
+
+### Bulk update
+
+`EntityUpdateMany` wraps SeaORM's `UpdateMany` and returns the number of affected rows:
+
+```rust
+use modo_db::sea_orm::{ColumnTrait, Expr};
+
+// Mark all overdue todos as completed
+let affected = Todo::update_many()
+    .filter(todo::Column::Completed.eq(false))
+    .filter(todo::Column::CreatedAt.lt(cutoff_date))
+    .col_expr(todo::Column::Completed, Expr::value(true))
+    .exec(&*db)
+    .await?;
+
+tracing::info!("Updated {affected} todos");
+```
+
+Use `.col_expr(column, Expr::value(val))` -- there is no `.set()` method on `UpdateMany`.
+
+### Bulk delete
+
+`EntityDeleteMany` wraps SeaORM's `DeleteMany`:
+
+```rust
+use modo_db::sea_orm::ColumnTrait;
+
+// Delete all completed todos
+let affected = Todo::delete_many()
+    .filter(todo::Column::Completed.eq(true))
+    .exec(&*db)
+    .await?;
+```
+
+For soft-delete entities, use `Todo::delete_many()` (soft-deletes: sets `deleted_at`) or
+`Todo::force_delete_many()` (hard-deletes: removes rows).
+
+---
+
+## Lifecycle Hooks
+
+Define lifecycle hooks as inherent methods on your entity struct. No trait import is needed --
+the `DefaultHooks` blanket trait provides no-op defaults, and your inherent methods take
+priority via Rust's method resolution.
+
+### Available hooks
+
+```rust
+impl Todo {
+    /// Called before insert and update. Can modify self.
+    pub fn before_save(&mut self) -> Result<(), modo::Error> {
+        self.title = self.title.trim().to_string();
+        if self.title.is_empty() {
+            return Err(modo::Error::new(
+                modo::axum::http::StatusCode::BAD_REQUEST,
+                "validation_error",
+                "Title cannot be empty",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Called after successful insert and update.
+    pub fn after_save(&self) -> Result<(), modo::Error> {
+        tracing::info!(id = %self.id, "Todo saved");
+        Ok(())
+    }
+
+    /// Called before delete. Return Err to prevent deletion.
+    pub fn before_delete(&self) -> Result<(), modo::Error> {
+        if !self.completed {
+            return Err(modo::HttpError::Forbidden
+                .with_message("Cannot delete incomplete todo"));
+        }
+        Ok(())
+    }
+}
+```
+
+### Hook execution order
+
+- **Insert:** `before_save` -> DB insert -> `after_save`
+- **Update:** `before_save` -> DB update -> refresh fields -> `after_save`
+- **Delete:** `before_delete` -> DB delete (or soft-delete)
+
+### Transactional caveat
+
+`after_save` runs after the database write succeeds. If `after_save` returns `Err`, the caller
+sees an error, but the row has already been written. For critical post-save validation, use a
+transaction (see Transactions section).
+
+---
+
+## Relation Accessors
+
+The entity macro generates async accessor methods for declared relations. These load related
+records lazily when called.
+
+### `belongs_to` relation
+
+```rust
+#[modo_db::entity(table = "posts")]
+#[entity(timestamps)]
+pub struct Post {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    #[entity(belongs_to = "User", on_delete = "Cascade")]
+    pub user_id: String,
+    pub title: String,
+    pub body: String,
+}
+```
+
+The macro generates an async accessor named by stripping the `_id` suffix:
+
+```rust
+// Generated:
+// pub async fn user(&self, db: &impl ConnectionTrait) -> Result<Option<User>, modo::Error>
+
+let post = Post::find_by_id(&id, &*db).await?;
+let author: Option<User> = post.user(&*db).await?;
+```
+
+### `has_many` relation
+
+```rust
+#[modo_db::entity(table = "users")]
+#[entity(timestamps)]
+pub struct User {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    pub email: String,
+    #[entity(has_many)]
+    pub posts: (),        // field excluded from DB model
+}
+```
+
+The macro generates an accessor using the field name:
+
+```rust
+// Generated:
+// pub async fn posts(&self, db: &impl ConnectionTrait) -> Result<Vec<Post>, modo::Error>
+
+let user = User::find_by_id(&id, &*db).await?;
+let user_posts: Vec<Post> = user.posts(&*db).await?;
+```
+
+### `has_one` relation
+
+```rust
+#[modo_db::entity(table = "users")]
+pub struct User {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    #[entity(has_one)]
+    pub profile: (),
+}
+```
+
+```rust
+// Generated:
+// pub async fn profile(&self, db: &impl ConnectionTrait) -> Result<Option<Profile>, modo::Error>
+
+let profile = user.profile(&*db).await?;
+```
+
+### Many-to-many via join entity
+
+```rust
+#[modo_db::entity(table = "posts")]
+pub struct Post {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    #[entity(has_many, via = "PostTag")]
+    pub tags: (),
+}
+```
+
+```rust
+let tags: Vec<Tag> = post.tags(&*db).await?;
+```
+
+### `target` override
+
+When the target entity cannot be inferred from the field name:
+
+```rust
+#[entity(has_many, target = "Comment")]
+pub comments: (),
+```
+
+---
+
+## Soft Delete
+
+When `#[entity(soft_delete)]` is enabled, the macro transforms delete behavior and adds
+recovery methods.
+
+### Entity definition
+
+```rust
+#[modo_db::entity(table = "articles")]
+#[entity(timestamps, soft_delete)]
+pub struct Article {
+    #[entity(primary_key, auto = "ulid")]
+    pub id: String,
+    pub title: String,
+    pub published: bool,
+    // deleted_at: Option<DateTime<Utc>> -- auto-injected, do NOT declare
+}
+```
+
+### Standard operations auto-filter
+
+```rust
+// find_by_id excludes soft-deleted -- returns 404 for deleted records
+let article = Article::find_by_id(&id, &*db).await?;
+
+// find_all excludes soft-deleted
+let articles = Article::find_all(&*db).await?;
+
+// query() excludes soft-deleted
+let published = Article::query()
+    .filter(article::Column::Published.eq(true))
+    .all(&*db)
+    .await?;
+```
+
+### Soft-delete a record
+
+```rust
+// .delete() sets deleted_at = now (and updates updated_at if timestamps enabled)
+let article = Article::find_by_id(&id, &*db).await?;
+article.delete(&*db).await?;
+
+// Or by ID
+Article::delete_by_id(&id, &*db).await?;
+```
+
+### Restore a soft-deleted record
+
+```rust
+// Must load with with_deleted() since standard find excludes deleted
+let mut article = Article::with_deleted()
+    .filter(article::Column::Id.eq(&id))
+    .one(&*db)
+    .await?
+    .ok_or(modo::HttpError::NotFound)?;
+
+article.restore(&*db).await?;  // clears deleted_at
+```
+
+### Query including or only soft-deleted
+
+```rust
+// All records including soft-deleted
+let all = Article::with_deleted().all(&*db).await?;
+
+// Only soft-deleted records
+let trashed = Article::only_deleted().all(&*db).await?;
+```
+
+### Hard delete (permanent)
+
+```rust
+// Force-delete a single record (bypasses soft-delete)
+let article = Article::with_deleted()
+    .filter(article::Column::Id.eq(&id))
+    .one(&*db)
+    .await?
+    .ok_or(modo::HttpError::NotFound)?;
+article.force_delete(&*db).await?;
+
+// Force-delete by ID
+Article::force_delete_by_id(&id, &*db).await?;
+
+// Bulk hard-delete
+Article::force_delete_many()
+    .filter(article::Column::CreatedAt.lt(cutoff))
+    .exec(&*db)
+    .await?;
+```
+
+### Bulk soft-delete
+
+```rust
+// Soft-delete all unpublished articles
+Article::delete_many()
+    .filter(article::Column::Published.eq(false))
+    .exec(&*db)
+    .await?;
+```
+
+`delete_many()` on a soft-delete entity generates an UPDATE (sets `deleted_at = now`) rather
+than a DELETE. It auto-filters to only non-deleted records.
+
+---
+
+## Pagination
+
+### Offset pagination
+
+```rust
+use modo_db::{Db, PageParams, PageResult};
+use modo::extractor::QueryReq;
+
+#[modo::handler(GET, "/todos")]
+async fn list_todos(
+    Db(db): Db,
+    QueryReq(params): QueryReq<PageParams>,
+) -> modo::JsonResult<PageResult<TodoResponse>> {
+    let page = Todo::query()
+        .order_by_desc(todo::Column::CreatedAt)
+        .paginate(&*db, &params)
+        .await?;
+    Ok(modo::Json(page.map(TodoResponse::from)))
+}
+```
+
+`PageParams` query-string fields (with defaults):
+
+| Field | Default | Constraint |
+|-------|---------|------------|
+| `page` | `1` | 1-indexed |
+| `per_page` | `20` | Clamped to `[1, 100]` |
+
+`PageResult<T>` response fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data` | `Vec<T>` | Page items |
+| `page` | `u64` | Current page number |
+| `per_page` | `u64` | Items per page (after clamping) |
+| `has_next` | `bool` | Whether a next page exists |
+| `has_prev` | `bool` | Whether a previous page exists |
+
+Uses the limit+1 trick to detect `has_next` without a `COUNT` query.
+
+`PageResult::map<U>(f)` transforms every item in `data` -- use it to convert from domain type
+to a response type.
+
+### Cursor pagination
+
+Preferable for large datasets because it avoids offset scans:
+
+```rust
+use modo_db::{CursorParams, CursorResult, Db};
+use modo::extractor::QueryReq;
+
+#[modo::handler(GET, "/todos")]
+async fn list_todos(
+    Db(db): Db,
+    QueryReq(params): QueryReq<CursorParams>,
+) -> modo::JsonResult<CursorResult<TodoResponse>> {
+    let page = Todo::query()
+        .paginate_cursor(
+            todo::Column::Id,
+            |m| m.id.clone(),
+            &*db,
+            &params,
+        )
+        .await?;
+    Ok(modo::Json(page.map(TodoResponse::from)))
+}
+```
+
+`CursorParams<V = String>` query-string fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `per_page` | `20` | Clamped to `[1, 100]` |
+| `after` | `None` | Cursor value -- fetch records after this position (forward) |
+| `before` | `None` | Cursor value -- fetch records before this position (backward) |
+
+When both `after` and `before` are set, `after` takes precedence.
+
+For string-keyed entities (ULID/NanoID), use `CursorParams` (default `String`). For integer
+primary keys, use `CursorParams<i64>`.
+
+`CursorResult<T>` response fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `data` | `Vec<T>` | Page items |
+| `per_page` | `u64` | Items per page (after clamping) |
+| `next_cursor` | `Option<String>` | Cursor for `?after=` to get the next page |
+| `prev_cursor` | `Option<String>` | Cursor for `?before=` to get the previous page |
+| `has_next` | `bool` | Whether a next page exists |
+| `has_prev` | `bool` | Whether a previous page exists |
+
+Navigate with `?after=<next_cursor>` (forward) and `?before=<prev_cursor>` (backward).
+
+### Standalone pagination functions
+
+The `paginate` and `paginate_cursor` free functions accept a raw `Select<E>` instead of an
+`EntityQuery`. Use these when building queries with raw SeaORM:
+
+```rust
+use modo_db::{paginate, paginate_cursor};
+use modo_db::sea_orm::EntityTrait;
+
+let page = paginate(todo::Entity::find(), &*db, &params).await
+    .map_err(modo_db::db_err_to_error)?;
+```
+
+---
+
+## Transactions
+
+Use SeaORM's transaction API directly. The `&*db` deref gives you a `DatabaseConnection` which
+supports `.begin()`:
+
+```rust
+use modo_db::sea_orm::TransactionTrait;
+
+#[modo::handler(POST, "/transfer")]
+async fn transfer(Db(db): Db, input: JsonReq<TransferInput>) -> JsonResult<()> {
+    let txn = db.begin().await.map_err(modo_db::db_err_to_error)?;
+
+    let mut from = Account::find_by_id(&input.from_id, &txn).await?;
+    let mut to = Account::find_by_id(&input.to_id, &txn).await?;
+
+    from.balance -= input.amount;
+    to.balance += input.amount;
+
+    from.update(&txn).await?;
+    to.update(&txn).await?;
+
+    txn.commit().await.map_err(modo_db::db_err_to_error)?;
+    Ok(Json(()))
+}
+```
+
+All Record trait methods (`insert`, `update`, `delete`, `find_by_id`, etc.) accept
+`&impl ConnectionTrait`, so they work with both `&*db` and `&txn`.
+
+---
+
+## Error Mapping
+
+The `db_err_to_error` helper converts SeaORM errors to `modo::Error` with appropriate HTTP
+status codes:
+
+| SeaORM Error | HTTP Status |
+|---|---|
+| `UniqueConstraintViolation` (via `DbErr::sql_err()`) | 409 Conflict |
+| `ForeignKeyConstraintViolation` (via `DbErr::sql_err()`) | 409 Conflict |
+| `DbErr::RecordNotFound` | 404 Not Found |
+| Anything else | 500 Internal Server Error |
+
+All generated `Record` trait methods call `db_err_to_error` automatically. Use it explicitly
+only when calling raw SeaORM APIs:
+
+```rust
+let model = todo::Entity::find_by_id(&id)
+    .one(&*db)
+    .await
+    .map_err(modo_db::db_err_to_error)?;
+```
 
 ---
 
@@ -241,6 +956,31 @@ registrations are a runtime error (detected before any migration runs).
 Each executed migration is recorded in `_modo_migrations` with its version, description, and
 timestamp.
 
+### Migration using SeaORM typed API
+
+Prefer the typed SeaORM API over raw SQL when possible:
+
+```rust
+use modo_db::sea_orm::{ActiveModelTrait, Set};
+
+#[modo_db::migration(version = 2, description = "normalize emails")]
+async fn normalize_emails(db: &sea_orm::DatabaseConnection)
+    -> Result<(), modo::Error>
+{
+    use modo_db::sea_orm::{EntityTrait, ColumnTrait, QueryFilter};
+
+    let users = user::Entity::find().all(db).await?;
+    for u in users {
+        let mut am: user::ActiveModel = u.into();
+        if let sea_orm::ActiveValue::Set(ref mut email) = am.email {
+            *email = email.to_lowercase();
+        }
+        am.update(db).await?;
+    }
+    Ok(())
+}
+```
+
 ---
 
 ## Db Extractor
@@ -252,286 +992,17 @@ use modo_db::Db;
 
 #[modo::handler(GET, "/todos")]
 async fn list_todos(Db(db): Db) -> modo::JsonResult<Vec<TodoResponse>> {
-    // db is a DbPool; deref it with &*db to get &DatabaseConnection
-    let todos = todo::Entity::find()
-        .all(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(format!("Failed to list todos: {e}")))?;
+    let todos = Todo::find_all(&*db).await?;
     Ok(modo::Json(todos.into_iter().map(TodoResponse::from).collect()))
 }
 ```
 
 `DbPool` implements `Deref<Target = DatabaseConnection>`, so `&*db` gives a
 `&sea_orm::DatabaseConnection` suitable for passing to SeaORM query methods.
+`DbPool` also has a `.connection()` method that returns the same `&DatabaseConnection`.
 
 `Db` returns a `500 Internal Server Error` if `DbPool` was not registered via
 `app.managed_service(db)`.
-
----
-
-## CRUD Patterns
-
-Patterns drawn from `examples/todo-api/src/`:
-
-### Create
-
-```rust
-use modo::extractor::JsonReq;
-use modo::{Error, Json, JsonResult};
-use modo_db::sea_orm::{ActiveModelTrait, Set};
-
-#[modo::handler(POST, "/todos")]
-async fn create_todo(
-    Db(db): Db,
-    input: JsonReq<CreateTodo>,
-) -> JsonResult<TodoResponse> {
-    input.validate()?;
-    let model = todo::ActiveModel {
-        title: Set(input.title.clone()),
-        ..Default::default()
-    };
-    let result = model
-        .insert(&*db)
-        .await
-        .map_err(|e| Error::internal(format!("Failed to create todo: {e}")))?;
-    Ok(Json(TodoResponse::from(result)))
-}
-```
-
-- Use `sea_orm::Set(value)` to mark fields for insertion.
-- Fields with `auto = "ulid"` are set automatically by `before_save`; leave them as
-  `Default::default()` (i.e., `NotSet`).
-- Fields with `timestamps` (`created_at`, `updated_at`) are also set by `before_save`.
-- `.insert(&*db)` returns the inserted `Model`.
-
-### Read (list)
-
-```rust
-use modo_db::sea_orm::EntityTrait;
-
-#[modo::handler(GET, "/todos")]
-async fn list_todos(Db(db): Db) -> modo::JsonResult<Vec<TodoResponse>> {
-    let todos = todo::Entity::find()
-        .all(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(format!("Failed to list todos: {e}")))?;
-    Ok(modo::Json(todos.into_iter().map(TodoResponse::from).collect()))
-}
-```
-
-### Read (single)
-
-```rust
-use modo_db::sea_orm::EntityTrait;
-
-#[modo::handler(GET, "/todos/{id}")]
-async fn get_todo(Db(db): Db, id: String) -> modo::JsonResult<TodoResponse> {
-    let todo = todo::Entity::find_by_id(&id)
-        .one(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(format!("Failed to find todo: {e}")))?
-        .ok_or(modo::HttpError::NotFound)?;
-    Ok(modo::Json(TodoResponse::from(todo)))
-}
-```
-
-### Update
-
-```rust
-use modo_db::sea_orm::{ActiveModelTrait, EntityTrait, Set};
-
-// Illustrative example — not from the examples directory
-#[modo::handler(PATCH, "/todos/{id}")]
-async fn update_todo(
-    Db(db): Db,
-    id: String,
-    input: modo::Json<UpdateTodo>,
-) -> modo::JsonResult<TodoResponse> {
-    let todo = todo::Entity::find_by_id(&id)
-        .one(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(e.to_string()))?
-        .ok_or(modo::HttpError::NotFound)?;
-
-    let mut active: todo::ActiveModel = todo.into();
-    active.completed = Set(input.completed);
-    let updated = active
-        .update(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(e.to_string()))?;
-    Ok(modo::Json(TodoResponse::from(updated)))
-}
-```
-
-Convert a `Model` to `ActiveModel` with `.into()`, then set only the fields you want to change
-with `Set(value)`. Unset fields (`NotSet`) are not written to the database.
-
-### Delete
-
-```rust
-use modo_db::sea_orm::{EntityTrait, ModelTrait};
-
-#[modo::handler(DELETE, "/todos/{id}")]
-async fn delete_todo(Db(db): Db, id: String) -> modo::JsonResult<serde_json::Value> {
-    let todo = todo::Entity::find_by_id(&id)
-        .one(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(format!("Failed to find todo: {e}")))?
-        .ok_or(modo::HttpError::NotFound)?;
-    todo.delete(&*db)
-        .await
-        .map_err(|e| modo::Error::internal(format!("Failed to delete todo: {e}")))?;
-    Ok(modo::Json(serde_json::json!({"deleted": id})))
-}
-```
-
-Call `.delete(&*db)` on the `Model` (requires `ModelTrait` in scope).
-
----
-
-## Query Building
-
-All SeaORM v2 query builder methods are available via the entity module:
-
-```rust
-use modo_db::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Order};
-
-// Filter
-let active_todos = todo::Entity::find()
-    .filter(todo::Column::Completed.eq(false))
-    .all(&*db)
-    .await?;
-
-// Order
-let sorted = todo::Entity::find()
-    .order_by(todo::Column::CreatedAt, Order::Desc)
-    .all(&*db)
-    .await?;
-
-// Filter + order
-let results = todo::Entity::find()
-    .filter(todo::Column::Completed.eq(false))
-    .order_by(todo::Column::CreatedAt, Order::Desc)
-    .all(&*db)
-    .await?;
-
-// Find by primary key
-let one = todo::Entity::find_by_id("01J...").one(&*db).await?;
-```
-
-Common traits to import for query building:
-
-| Trait | Purpose |
-|-------|---------|
-| `EntityTrait` | `find()`, `find_by_id()`, `insert()`, `delete_many()` |
-| `ActiveModelTrait` | `.insert()`, `.update()`, `.save()`, `.delete()` on `ActiveModel` |
-| `ModelTrait` | `.delete()`, `.into_active_model()` on `Model` |
-| `QueryFilter` | `.filter(...)` |
-| `QueryOrder` | `.order_by(...)` |
-| `ColumnTrait` | `.eq()`, `.ne()`, `.lt()`, `.gt()`, `.is_null()`, `.contains()`, etc. |
-
-Import these from `modo_db::sea_orm`.
-
----
-
-## Pagination
-
-### Offset pagination
-
-Use `modo_db::paginate` with `PageParams` for traditional page-number pagination:
-
-```rust
-use modo_db::{Db, PageParams, paginate};
-use modo::extractor::QueryReq;
-
-#[modo::handler(GET, "/todos")]
-async fn list_todos(
-    Db(db): Db,
-    QueryReq(params): QueryReq<PageParams>,
-) -> modo::JsonResult<modo_db::PageResult<TodoResponse>> {
-    use modo_db::sea_orm::EntityTrait;
-    let page = paginate(todo::Entity::find(), &*db, &params)
-        .await
-        .map_err(|e| modo::Error::internal(e.to_string()))?;
-    Ok(modo::Json(page.map(TodoResponse::from)))
-}
-```
-
-`PageParams` query-string fields (with defaults):
-
-| Field | Default | Constraint |
-|-------|---------|------------|
-| `page` | `1` | 1-indexed |
-| `per_page` | `20` | Clamped to `[1, 100]` |
-
-`PageResult<T>` response fields:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `data` | `Vec<T>` | Page items |
-| `page` | `u64` | Current page number |
-| `per_page` | `u64` | Items per page (after clamping) |
-| `has_next` | `bool` | Whether a next page exists |
-| `has_prev` | `bool` | Whether a previous page exists |
-
-Uses the limit+1 trick to detect `has_next` without a `COUNT` query.
-
-`PageResult::map<U>(f)` transforms every item in `data` — use it to convert from `Model` to a
-response type.
-
-### Cursor pagination
-
-Use `modo_db::paginate_cursor` with `CursorParams` for keyset/cursor pagination. This is
-preferable for large datasets because it avoids offset scans.
-
-```rust
-use modo_db::{CursorParams, CursorResult, Db, paginate_cursor};
-use modo::extractor::QueryReq;
-
-#[modo::handler(GET, "/todos")]
-async fn list_todos(
-    Db(db): Db,
-    QueryReq(params): QueryReq<CursorParams>,
-) -> modo::JsonResult<CursorResult<TodoResponse>> {
-    use modo_db::sea_orm::EntityTrait;
-    let page = paginate_cursor(
-        todo::Entity::find(),
-        todo::Column::Id,
-        |m| m.id.clone(),
-        &*db,
-        &params,
-    )
-    .await
-    .map_err(|e| modo::Error::internal(e.to_string()))?;
-    Ok(modo::Json(page.map(TodoResponse::from)))
-}
-```
-
-`CursorParams<V = String>` query-string fields:
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `per_page` | `20` | Clamped to `[1, 100]` |
-| `after` | `None` | Cursor value — fetch records after this position (forward) |
-| `before` | `None` | Cursor value — fetch records before this position (backward) |
-
-When both `after` and `before` are set, `after` takes precedence.
-
-For string-keyed entities (ULID/NanoID), use `CursorParams` (default `String`). For integer
-primary keys, use `CursorParams<i64>`.
-
-`CursorResult<T>` response fields:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `data` | `Vec<T>` | Page items |
-| `per_page` | `u64` | Items per page (after clamping) |
-| `next_cursor` | `Option<String>` | Cursor for `?after=` to get the next page |
-| `prev_cursor` | `Option<String>` | Cursor for `?before=` to get the previous page |
-| `has_next` | `bool` | Whether a next page exists |
-| `has_prev` | `bool` | Whether a previous page exists |
-
-Navigate with `?after=<next_cursor>` (forward) and `?before=<prev_cursor>` (backward).
 
 ---
 
@@ -566,11 +1037,11 @@ async fn main(
     app: modo::app::AppBuilder,
     config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Main database — syncs all registered entities and runs pending migrations
+    // Main database -- syncs all registered entities and runs pending migrations
     let db = modo_db::connect(&config.database).await?;
     modo_db::sync_and_migrate(&db).await?;
 
-    // Analytics database — syncs only "analytics" group
+    // Analytics database -- syncs only "analytics" group
     let analytics_db = modo_db::connect(&config.analytics_database).await?;
     modo_db::sync_and_migrate_group(&analytics_db, "analytics").await?;
 
@@ -616,7 +1087,8 @@ Extract the secondary database using `modo::Service<AnalyticsDb>` in handlers.
 
 ### Response mapping
 
-Define a `From<entity::Model>` implementation on your response type to keep handler code clean:
+Define a `From<Todo>` implementation on your response type. Because `Todo` is the domain struct
+(not the SeaORM `Model`), you work with your own type everywhere:
 
 ```rust
 #[derive(serde::Serialize)]
@@ -626,36 +1098,57 @@ pub struct TodoResponse {
     completed: bool,
 }
 
-impl From<todo::Model> for TodoResponse {
-    fn from(m: todo::Model) -> Self {
+impl From<Todo> for TodoResponse {
+    fn from(t: Todo) -> Self {
         Self {
-            id: m.id,
-            title: m.title,
-            completed: m.completed,
+            id: t.id,
+            title: t.title,
+            completed: t.completed,
         }
     }
 }
 ```
 
-Then use `.map(TodoResponse::from)` on `Vec<Model>` or on `PageResult::map`.
+Then use `.map(TodoResponse::from)` on `Vec<Todo>` or on `PageResult::map` / `CursorResult::map`.
+
+### Partial update with raw SeaORM
+
+When you need to update specific fields without loading the full record, use the generated
+`ActiveModel` directly:
+
+```rust
+use modo_db::sea_orm::{ActiveModelTrait, Set};
+
+// Update a single field by PK
+let mut am = todo::ActiveModel {
+    id: Set(id.clone()),
+    completed: Set(true),
+    ..Default::default()  // other fields are NotSet -> not written
+};
+am.update(&*db).await.map_err(modo_db::db_err_to_error)?;
+```
 
 ---
 
 ## Gotchas
 
 - **SeaORM v2 only**: modo uses SeaORM v2 RC. Do not reference SeaORM v1.x crate docs,
-  migration patterns, or API surface. Key breaking changes include `ActiveModelBehavior::before_save`
-  signature changes and query builder API differences.
+  migration patterns, or API surface.
+
+- **`find_by_id` returns `Result`, not `Option`**: Unlike raw SeaORM, the generated
+  `find_by_id` returns `Result<Self, modo::Error>` with a 404 error when the record is missing.
+  There is no `.ok_or()` needed.
+
+- **`update` mutates `&mut self`**: After calling `.update(&*db)`, the struct is refreshed with
+  the latest values from the database (including updated timestamps). You do not need to
+  re-fetch the record.
 
 - **`ExprTrait` conflicts with `Ord::max`/`Ord::min`**: SeaORM's `ExprTrait` re-exports methods
-  named `max` and `min`. When both `ExprTrait` and Rust's `Ord` trait are in scope, calls to
-  `.max()` on numeric values become ambiguous. Disambiguate with the fully-qualified form:
-  `Ord::max(a, b)`.
+  named `max` and `min`. Disambiguate with the fully-qualified form: `Ord::max(a, b)`.
 
 - **`inventory` linking in tests**: Entity and migration registrations submitted via
   `inventory::submit!` may be dropped by the linker in test builds if nothing from the module is
-  directly referenced. Force linking with `use crate::entity::todo as _;` (or similar) in test
-  files.
+  directly referenced. Force linking with `use crate::entity::todo as _;` in test files.
 
 - **Schema sync is addition-only**: `sync_and_migrate` never drops or renames columns. Use a
   versioned `#[modo_db::migration]` to rename or drop columns.
@@ -663,19 +1156,34 @@ Then use `.map(TodoResponse::from)` on `Vec<Model>` or on `PageResult::map`.
 - **`auto = "ulid"` only on primary key fields**: Using `auto = "ulid"` or `auto = "nanoid"` on
   a non-primary-key field is a compile error.
 
-- **Do not declare `created_at`/`updated_at` manually**: If `#[entity(timestamps)]` is set and
-  your struct also declares a `created_at` or `updated_at` field, the macro emits a compile error.
-  Same applies for `deleted_at` with `#[entity(soft_delete)]`.
+- **Do not declare `created_at`/`updated_at`/`deleted_at` manually**: When `timestamps` or
+  `soft_delete` is enabled, the macro injects these fields. Declaring them yourself is a compile
+  error.
 
 - **`Db` extractor requires `managed_service`**: If `DbPool` is not registered via
   `app.managed_service(db)`, extracting `Db` in a handler returns a `500 Internal Server Error`.
 
-- **`&*db` dereference**: `DbPool` implements `Deref<Target = DatabaseConnection>`. SeaORM query
-  methods accept `&impl ConnectionTrait`. Pass `&*db` (or `db.connection()`) to them.
+- **`&*db` dereference**: `DbPool` implements `Deref<Target = DatabaseConnection>`. Pass `&*db`
+  (or `db.connection()`) to SeaORM and Record trait methods.
 
 - **Duplicate migration versions**: Two `#[modo_db::migration(version = N)]` entries with the
   same `N` (in the same group) cause `sync_and_migrate` to return an error before any migrations
   run. Version numbers must be unique per group.
+
+- **Soft-delete relation accessors do not auto-filter**: The generated `belongs_to`/`has_many`/
+  `has_one` accessor methods query raw SeaORM entities and do NOT automatically filter by
+  `deleted_at IS NULL`. Apply your own filter if needed.
+
+- **`after_save` transactional gap**: The row is written before `after_save` runs. If
+  `after_save` returns `Err`, the caller sees an error but the row exists in the database.
+  Use an explicit transaction if this matters.
+
+- **Bulk update uses `.col_expr()`, not `.set()`**: SeaORM's `UpdateMany` does not have a
+  `.set()` method. Use `.col_expr(column, Expr::value(val))` instead.
+
+- **`db_err_to_error` maps constraint violations to 409**: Unique and FK violations become
+  `409 Conflict`. The orphan rule prevents `impl From<DbErr> for modo::Error` in modo-db, so
+  use the helper function explicitly when calling raw SeaORM APIs.
 
 ---
 
@@ -686,6 +1194,11 @@ Then use `.map(TodoResponse::from)` on `Vec<Model>` or on `PageResult::map`.
 | `DatabaseConfig` | `modo_db::DatabaseConfig` |
 | `DbPool` | `modo_db::DbPool` |
 | `Db` | `modo_db::Db` |
+| `Record` | `modo_db::Record` |
+| `DefaultHooks` | `modo_db::DefaultHooks` |
+| `EntityQuery<T, E>` | `modo_db::EntityQuery` |
+| `EntityUpdateMany<E>` | `modo_db::EntityUpdateMany` |
+| `EntityDeleteMany<E>` | `modo_db::EntityDeleteMany` |
 | `EntityRegistration` | `modo_db::EntityRegistration` |
 | `MigrationRegistration` | `modo_db::MigrationRegistration` |
 | `PageParams` | `modo_db::PageParams` |
@@ -699,3 +1212,4 @@ Then use `.map(TodoResponse::from)` on `Vec<Model>` or on `PageResult::map`.
 | `connect` | `modo_db::connect` |
 | `generate_ulid` | `modo_db::generate_ulid` |
 | `generate_nanoid` | `modo_db::generate_nanoid` |
+| `db_err_to_error` | `modo_db::db_err_to_error` |
