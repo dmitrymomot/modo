@@ -17,8 +17,17 @@
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
-//! use modo::{Json, JsonResult, Service};
+//! use modo::{AppConfig, Json, JsonResult, Service};
 //! use modo_upload::{FileStorage, FromMultipart, MultipartForm, UploadConfig, UploadedFile, storage};
+//! use serde::Deserialize;
+//!
+//! #[derive(Default, Deserialize)]
+//! struct AppSettings {
+//!     #[serde(flatten)]
+//!     core: AppConfig,
+//!     #[serde(default)]
+//!     upload: UploadConfig,
+//! }
 //!
 //! #[derive(FromMultipart)]
 //! struct UploadForm {
@@ -40,7 +49,7 @@
 //! #[modo::main]
 //! async fn main(
 //!     app: modo::app::AppBuilder,
-//!     config: AppConfig,
+//!     config: AppSettings,
 //! ) -> Result<(), Box<dyn std::error::Error>> {
 //!     let file_storage = storage(&config.upload)?;
 //!     app.config(config.core).service(file_storage).run().await

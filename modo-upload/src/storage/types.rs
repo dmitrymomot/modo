@@ -3,7 +3,7 @@ use crate::stream::BufferedUpload;
 
 /// Metadata returned after a file has been successfully stored.
 pub struct StoredFile {
-    /// Relative path within the storage backend (e.g. `avatars/01HXK3Q1A2B3.jpg`).
+    /// Relative path within the storage backend (e.g. `"avatars/01HXK3Q1A2B3.jpg"`).
     pub path: String,
     /// File size in bytes.
     pub size: u64,
@@ -13,7 +13,11 @@ pub struct StoredFile {
 ///
 /// Both in-memory ([`UploadedFile`]) and chunked ([`BufferedUpload`]) uploads
 /// are supported.  Implementors must be `Send + Sync + 'static` so they can be
-/// shared across async tasks.
+/// shared across async tasks behind an `Arc<dyn FileStorage>`.
+///
+/// Use the [`storage()`](crate::storage()) factory function to construct the
+/// backend configured by [`UploadConfig`](crate::UploadConfig), or instantiate
+/// a concrete backend directly (e.g. [`LocalStorage`](super::local::LocalStorage)).
 #[async_trait::async_trait]
 pub trait FileStorage: Send + Sync + 'static {
     /// Store a buffered in-memory file under `prefix/`.

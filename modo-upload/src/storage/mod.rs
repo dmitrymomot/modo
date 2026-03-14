@@ -1,12 +1,13 @@
 //! Pluggable storage backends for persisted file uploads.
 //!
 //! Use [`storage()`] to construct the appropriate backend from
-//! [`UploadConfig`](crate::UploadConfig), or instantiate a backend directly:
+//! [`UploadConfig`](crate::UploadConfig), or instantiate a concrete backend
+//! directly:
 //!
-//! - [`local::LocalStorage`] — writes files to the local filesystem
-//!   (requires the `local` feature, enabled by default).
+//! - [`local::LocalStorage`] — writes files to the local filesystem.
+//!   Requires the `local` feature (enabled by default).
 //! - `opendal::OpendalStorage` — delegates to any Apache OpenDAL operator,
-//!   including S3-compatible services (requires the `opendal` feature).
+//!   including S3-compatible services.  Requires the `opendal` feature.
 
 mod factory;
 #[cfg(feature = "local")]

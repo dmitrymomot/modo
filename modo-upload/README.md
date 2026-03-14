@@ -31,7 +31,7 @@ struct ProfileForm {
     // optional second file
     banner: Option<UploadedFile>,
 
-    // multiple file upload (1–4 files, each ≤ 2 MB)
+    // multiple file upload (1–4 files, each at most 2 MB)
     #[upload(min_count = 1, max_count = 4, max_size = "2mb")]
     gallery: Vec<UploadedFile>,
 
@@ -45,15 +45,15 @@ struct ProfileForm {
 
 Supported field types:
 
-| Rust type              | Multipart field                        |
-| ---------------------- | -------------------------------------- |
-| `UploadedFile`         | required file                          |
-| `Option<UploadedFile>` | optional file                          |
+| Rust type              | Multipart field                                                     |
+| ---------------------- | ------------------------------------------------------------------- |
+| `UploadedFile`         | required file                                                       |
+| `Option<UploadedFile>` | optional file                                                       |
 | `Vec<UploadedFile>`    | zero or more files (count constraints via `min_count`/`max_count`) |
-| `BufferedUpload`       | required file (chunked reader)         |
-| `String`               | required text                          |
-| `Option<String>`       | optional text                          |
-| any `FromStr` type     | required text, parsed                  |
+| `BufferedUpload`       | required file (chunked reader; at most one per struct)              |
+| `String`               | required text                                                       |
+| `Option<String>`       | optional text                                                       |
+| any `FromStr` type     | required text, parsed via `FromStr`                                 |
 
 ### Extract in a handler
 
@@ -131,22 +131,22 @@ Size helper functions: `kb(n)`, `mb(n)`, `gb(n)` — return bytes as `usize`.
 
 ```yaml
 upload:
-    backend: local # "local" (default) or "s3"
-    path: ./uploads # base directory for local backend
-    max_file_size: 10mb # global default; per-field #[upload(max_size)] overrides
+  backend: local      # "local" (default) or "s3"
+  path: ./uploads     # base directory for local backend
+  max_file_size: 10mb # global default; per-field #[upload(max_size)] overrides
 ```
 
 S3 configuration (requires the `opendal` feature):
 
 ```yaml
 upload:
-    backend: s3
-    s3:
-        bucket: my-bucket
-        region: us-east-1
-        endpoint: "" # leave empty for AWS; set for MinIO etc.
-        access_key_id: AKIA...
-        secret_access_key: secret
+  backend: s3
+  s3:
+    bucket: my-bucket
+    region: us-east-1
+    endpoint: ""        # leave empty for AWS; set for MinIO etc.
+    access_key_id: AKIA...
+    secret_access_key: secret
 ```
 
 `S3Config` fields: `bucket`, `region`, `endpoint`, `access_key_id`,

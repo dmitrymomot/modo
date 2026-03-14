@@ -81,7 +81,8 @@ struct OrderForm {
 
 ### Integration with `MultipartForm` extractor
 
-In a modo handler, use `MultipartForm<T>` from `modo_upload` to extract and validate the form:
+In a modo handler, use `MultipartForm<T>` from `modo_upload` to extract and validate the form.
+`MultipartForm<T>` implements `Deref<Target = T>`, so struct fields are accessible directly.
 
 ```rust
 use std::sync::Arc;
@@ -100,7 +101,6 @@ async fn update_profile(
     storage: Service<Arc<dyn FileStorage>>,
     form: MultipartForm<ProfileForm>,
 ) -> JsonResult<serde_json::Value> {
-    form.validate()?;
     let stored = storage.store("avatars", &form.avatar).await?;
     Ok(Json(serde_json::json!({
         "name": form.name,
@@ -134,7 +134,7 @@ Overrides the multipart field name. By default the Rust field name is used.
 | `UploadedFile`         | yes      | Single file; validation error if missing         |
 | `Option<UploadedFile>` | no       | Optional single file                             |
 | `Vec<UploadedFile>`    | no       | Zero or more files under the same multipart name |
-| `BufferedUpload`       | yes      | Streaming upload; at most one field per struct   |
+| `BufferedUpload`       | yes      | Buffered upload; at most one field per struct    |
 | `String`               | yes      | Required text field                              |
 | `Option<String>`       | no       | Optional text field                              |
 | `T: FromStr`           | yes      | Required text field parsed via `FromStr`         |
