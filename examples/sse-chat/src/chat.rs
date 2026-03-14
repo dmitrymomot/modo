@@ -4,10 +4,11 @@ mod chat {
     use modo::extractor::FormReq;
     use modo::handler;
     use modo::sse::{Sse, SseEvent, SseResponse, SseStreamExt};
-    use modo::{Error, HandlerResult, HttpError, Service, ViewRenderer, ViewResult};
-    use modo_db::Db;
+    use modo::{HandlerResult, HttpError, Service, ViewRenderer, ViewResult};
+    use modo_db::{Db, Record};
     use modo_session::SessionManager;
 
+    use crate::entity::Message;
     use crate::entity::message;
     use crate::types::{ChatBroadcaster, ChatEvent, ROOMS};
     use crate::views::{ChatPage, MessagePartial, SendForm, SendFormPartial};
@@ -29,14 +30,13 @@ mod chat {
         }
 
         // Load last 50 messages from DB (newest first, then reverse for chronological order)
-        use modo_db::sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
-        let mut db_messages = message::Entity::find()
+        use modo_db::sea_orm::ColumnTrait;
+        let mut db_messages = Message::query()
             .filter(message::Column::Room.eq(&room))
             .order_by_desc(message::Column::CreatedAt)
             .limit(50)
             .all(&*db)
-            .await
-            .map_err(|e| Error::internal(format!("Failed to load messages: {e}")))?;
+            .await?;
         db_messages.reverse();
 
         // Render each message as HTML
@@ -107,17 +107,14 @@ mod chat {
         }
 
         // Save to DB
-        use modo_db::sea_orm::{ActiveModelTrait, Set};
-        let model = message::ActiveModel {
-            room: Set(room.clone()),
-            username: Set(username.clone()),
-            text: Set(text.clone()),
+        let saved = Message {
+            room: room.clone(),
+            username: username.clone(),
+            text: text.clone(),
             ..Default::default()
-        };
-        let saved = model
-            .insert(&*db)
-            .await
-            .map_err(|e| Error::internal(format!("Failed to save message: {e}")))?;
+        }
+        .insert(&*db)
+        .await?;
 
         // Broadcast to SSE subscribers
         let _ = bc.send(
