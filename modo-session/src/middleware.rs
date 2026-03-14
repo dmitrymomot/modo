@@ -44,6 +44,9 @@ pub(crate) struct SessionManagerState {
 
 // --- Layer ---
 
+/// Tower [`Layer`] produced by [`layer`].
+///
+/// Obtain via [`layer(store)`][layer] — do not construct directly.
 #[derive(Clone)]
 pub struct SessionContextLayer {
     store: Arc<SessionStore>,
@@ -69,12 +72,20 @@ impl<S> Layer<S> for SessionContextLayer {
 }
 
 /// Create a session middleware layer from a `SessionStore`.
+///
+/// Install the returned layer with `.layer(modo_session::layer(session_store))`
+/// on your app builder.  The layer must be present for [`crate::SessionManager`]
+/// to function as an extractor.
 pub fn layer(store: SessionStore) -> SessionContextLayer {
     SessionContextLayer::new(store)
 }
 
 // --- Service ---
 
+/// Tower [`Service`] produced by [`SessionContextLayer`].
+///
+/// Handles per-request session loading, fingerprint validation, and cookie
+/// management.  Do not construct directly; use [`layer`] instead.
 #[derive(Clone)]
 pub struct SessionMiddleware<S> {
     inner: S,
@@ -222,11 +233,13 @@ where
 }
 
 /// Extract the current user ID from request extensions without going through
-/// the full `SessionManager` extractor. Useful for middleware/layers.
+/// the full [`crate::SessionManager`] extractor.
 ///
-/// Uses `try_lock()` to avoid deadlocks when `SessionManager::set()` or
-/// `remove_key()` hold the mutex across `.await`. Returns `None` if no session
-/// exists or the lock is contended (logged at trace level).
+/// Useful inside Tower layers that run after the session middleware but before
+/// (or instead of) a handler.  Uses `try_lock()` internally to avoid deadlocks
+/// when [`crate::SessionManager::set`] or [`crate::SessionManager::remove_key`]
+/// hold the mutex across `.await`.  Returns `None` if no session exists or if
+/// the lock is contended (logged at trace level).
 pub fn user_id_from_extensions(extensions: &http::Extensions) -> Option<String> {
     extensions
         .get::<Arc<SessionManagerState>>()

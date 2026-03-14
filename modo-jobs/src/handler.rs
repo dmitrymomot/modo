@@ -46,8 +46,8 @@ impl JobContext {
 
     /// Get the database connection pool.
     ///
-    /// Returns an error if the database was not added to the `ServiceRegistry`
-    /// passed to [`crate::start`].
+    /// Returns an error if the database was not registered via
+    /// [`crate::JobsBuilder::service`] before calling `.run()`.
     pub fn db(&self) -> Result<Arc<DbPool>, modo::Error> {
         self.services
             .get::<DbPool>()

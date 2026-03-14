@@ -7,7 +7,7 @@
 //!   via the registered [`TenantResolverService<T>`].
 //! - Built-in resolvers: [`SubdomainResolver`], [`HeaderResolver`], [`PathPrefixResolver`].
 //!
-//! An optional **`templates`** feature adds [`TenantContextLayer`], a Tower middleware that
+//! An optional **`templates`** feature adds `TenantContextLayer`, a Tower middleware that
 //! injects the resolved tenant into the minijinja template context under the key `"tenant"`.
 
 pub(crate) mod cache;

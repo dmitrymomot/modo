@@ -18,6 +18,7 @@ where
     F: Fn(String) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Result<Option<T>, modo::Error>> + Send,
 {
+    /// Creates a new `PathPrefixResolver` that calls `lookup` with the first URL path segment.
     pub fn new(lookup: F) -> Self {
         Self {
             lookup,

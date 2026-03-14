@@ -12,9 +12,13 @@
 //!
 //! # Quick start
 //!
+//! Define a form struct, register the storage backend as a service, then
+//! extract the form in a handler:
+//!
 //! ```rust,ignore
-//! use modo_upload::{FromMultipart, MultipartForm, UploadedFile, storage};
-//! use modo_upload::UploadConfig;
+//! use std::sync::Arc;
+//! use modo::{Json, JsonResult, Service};
+//! use modo_upload::{FileStorage, FromMultipart, MultipartForm, UploadConfig, UploadedFile, storage};
 //!
 //! #[derive(FromMultipart)]
 //! struct UploadForm {
@@ -24,11 +28,22 @@
 //! }
 //!
 //! #[modo::handler(POST, "/upload")]
-//! async fn upload(form: MultipartForm<UploadForm>) -> modo::JsonResult<()> {
-//!     let storage = storage(&UploadConfig::default())?;
-//!     let stored = storage.store("avatars", &form.avatar).await?;
+//! async fn upload(
+//!     file_storage: Service<Arc<dyn FileStorage>>,
+//!     form: MultipartForm<UploadForm>,
+//! ) -> JsonResult<()> {
+//!     let stored = file_storage.store("avatars", &form.avatar).await?;
 //!     println!("stored at {}", stored.path);
-//!     Ok(modo::Json(()))
+//!     Ok(Json(()))
+//! }
+//!
+//! #[modo::main]
+//! async fn main(
+//!     app: modo::app::AppBuilder,
+//!     config: AppConfig,
+//! ) -> Result<(), Box<dyn std::error::Error>> {
+//!     let file_storage = storage(&config.upload)?;
+//!     app.config(config.core).service(file_storage).run().await
 //! }
 //! ```
 
