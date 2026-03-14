@@ -1,11 +1,10 @@
 #[allow(clippy::module_inception)]
 #[modo::module(prefix = "/chat")]
 mod chat {
+    use modo::extractors::FormReq;
     use modo::handler;
-
-    use modo::extractors::Form;
     use modo::sse::{Sse, SseEvent, SseResponse, SseStreamExt};
-    use modo::{Service, ViewRenderer};
+    use modo::{Error, HandlerResult, HttpError, Service, ViewRenderer, ViewResult};
     use modo_db::Db;
     use modo_session::SessionManager;
 
@@ -19,7 +18,7 @@ mod chat {
         session: SessionManager,
         view: ViewRenderer,
         Db(db): Db,
-    ) -> modo::ViewResult {
+    ) -> ViewResult {
         let username = match session.user_id().await {
             Some(u) => u,
             None => return view.redirect("/login"),
@@ -37,7 +36,7 @@ mod chat {
             .limit(50)
             .all(&*db)
             .await
-            .map_err(|e| modo::Error::internal(format!("Failed to load messages: {e}")))?;
+            .map_err(|e| Error::internal(format!("Failed to load messages: {e}")))?;
         db_messages.reverse();
 
         // Render each message as HTML
@@ -68,9 +67,9 @@ mod chat {
         session: SessionManager,
         view: ViewRenderer,
         Service(bc): Service<ChatBroadcaster>,
-    ) -> modo::HandlerResult<SseResponse> {
+    ) -> HandlerResult<SseResponse> {
         if !ROOMS.contains(&room.as_str()) {
-            return Err(modo::HttpError::NotFound.into());
+            return Err(HttpError::NotFound.into());
         }
 
         let current_user = session.user_id().await.unwrap_or_default();
@@ -94,20 +93,17 @@ mod chat {
         view: ViewRenderer,
         Db(db): Db,
         Service(bc): Service<ChatBroadcaster>,
-        form: Form<SendForm>,
-    ) -> modo::ViewResult {
-        let username = session
-            .user_id()
-            .await
-            .ok_or(modo::HttpError::Unauthorized)?;
+        form: FormReq<SendForm>,
+    ) -> ViewResult {
+        let username = session.user_id().await.ok_or(HttpError::Unauthorized)?;
 
         if !ROOMS.contains(&room.as_str()) {
-            return Err(modo::HttpError::NotFound.into());
+            return Err(HttpError::NotFound.into());
         }
 
         let text = form.text.trim().to_string();
         if text.is_empty() {
-            return Err(modo::HttpError::BadRequest.with_message("message text is required"));
+            return Err(HttpError::BadRequest.with_message("message text is required"));
         }
 
         // Save to DB
@@ -121,7 +117,7 @@ mod chat {
         let saved = model
             .insert(&*db)
             .await
-            .map_err(|e| modo::Error::internal(format!("Failed to save message: {e}")))?;
+            .map_err(|e| Error::internal(format!("Failed to save message: {e}")))?;
 
         // Broadcast to SSE subscribers
         let _ = bc.send(

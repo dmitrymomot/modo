@@ -1,6 +1,5 @@
-use modo::HttpError;
-use modo::JsonResult;
-use modo::extractors::Json;
+use modo::extractors::JsonReq;
+use modo::{Error, HttpError, Json, JsonResult};
 use modo_db::Db;
 use serde_json::{Value, json};
 
@@ -13,14 +12,12 @@ async fn list_todos(Db(db): Db) -> JsonResult<Vec<TodoResponse>> {
     let todos = todo::Entity::find()
         .all(&*db)
         .await
-        .map_err(|e| modo::Error::internal(format!("Failed to list todos: {e}")))?;
-    Ok(modo::Json(
-        todos.into_iter().map(TodoResponse::from).collect(),
-    ))
+        .map_err(|e| Error::internal(format!("Failed to list todos: {e}")))?;
+    Ok(Json(todos.into_iter().map(TodoResponse::from).collect()))
 }
 
 #[modo::handler(POST, "/todos")]
-async fn create_todo(Db(db): Db, input: Json<CreateTodo>) -> JsonResult<TodoResponse> {
+async fn create_todo(Db(db): Db, input: JsonReq<CreateTodo>) -> JsonResult<TodoResponse> {
     input.validate()?;
     use modo_db::sea_orm::{ActiveModelTrait, Set};
     let model = todo::ActiveModel {
@@ -30,8 +27,8 @@ async fn create_todo(Db(db): Db, input: Json<CreateTodo>) -> JsonResult<TodoResp
     let result = model
         .insert(&*db)
         .await
-        .map_err(|e| modo::Error::internal(format!("Failed to create todo: {e}")))?;
-    Ok(modo::Json(TodoResponse::from(result)))
+        .map_err(|e| Error::internal(format!("Failed to create todo: {e}")))?;
+    Ok(Json(TodoResponse::from(result)))
 }
 
 #[modo::handler(DELETE, "/todos/{id}")]
@@ -40,10 +37,10 @@ async fn delete_todo(Db(db): Db, id: String) -> JsonResult<Value> {
     let todo = todo::Entity::find_by_id(&id)
         .one(&*db)
         .await
-        .map_err(|e| modo::Error::internal(format!("Failed to find todo: {e}")))?
+        .map_err(|e| Error::internal(format!("Failed to find todo: {e}")))?
         .ok_or(HttpError::NotFound)?;
     todo.delete(&*db)
         .await
-        .map_err(|e| modo::Error::internal(format!("Failed to delete todo: {e}")))?;
-    Ok(modo::Json(json!({"deleted": id})))
+        .map_err(|e| Error::internal(format!("Failed to delete todo: {e}")))?;
+    Ok(Json(json!({"deleted": id})))
 }

@@ -1,5 +1,4 @@
-use modo::JsonResult;
-use modo::Service;
+use modo::{Json, JsonResult, Service};
 use modo_upload::{FileStorage, MultipartForm};
 
 use crate::types::ProfileForm;
@@ -11,7 +10,7 @@ async fn update_profile(
 ) -> JsonResult<serde_json::Value> {
     form.validate()?;
     let stored = storage.store("avatars", &form.avatar).await?;
-    Ok(modo::Json(serde_json::json!({
+    Ok(Json(serde_json::json!({
         "name": form.name,
         "avatar_path": stored.path,
     })))

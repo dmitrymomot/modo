@@ -1,6 +1,5 @@
-use modo::HandlerResult;
-use modo::HttpError;
-use modo::extractors::Form;
+use modo::extractors::FormReq;
+use modo::{AppConfig, HandlerResult, HttpError, RequestId};
 
 #[derive(serde::Deserialize, modo::Sanitize, modo::Validate)]
 struct ContactForm {
@@ -14,7 +13,7 @@ struct ContactForm {
 }
 
 #[modo::handler(GET, "/")]
-async fn index(request_id: modo::RequestId) -> String {
+async fn index(request_id: RequestId) -> String {
     format!("Hello modo! (request: {request_id})")
 }
 
@@ -29,7 +28,7 @@ async fn error_example() -> Result<&'static str, HttpError> {
 }
 
 #[modo::handler(POST, "/contact")]
-async fn contact(form: Form<ContactForm>) -> HandlerResult<&'static str> {
+async fn contact(form: FormReq<ContactForm>) -> HandlerResult<&'static str> {
     form.validate()?;
     Ok("Thanks for your message!")
 }
@@ -37,7 +36,7 @@ async fn contact(form: Form<ContactForm>) -> HandlerResult<&'static str> {
 #[modo::main]
 async fn main(
     app: modo::app::AppBuilder,
-    config: modo::config::AppConfig,
+    config: AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     app.config(config).run().await
 }
