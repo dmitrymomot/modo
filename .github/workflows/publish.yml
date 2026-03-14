@@ -27,49 +27,45 @@ jobs:
         run: |
           set -e
 
-          # Publishable crates in dependency order.
-          # Format: "directory:package-name"
-          CRATES=(
-            "modo-macros:modo-macros"
-            "modo-db-macros:modo-db-macros"
-            "modo-jobs-macros:modo-jobs-macros"
-            "modo-upload-macros:modo-upload-macros"
-            "modo:modo"
-            "modo-db:modo-db"
-            "modo-email:modo-email"
-            "modo-tenant:modo-tenant"
-            "modo-upload:modo-upload"
-            "modo-jobs:modo-jobs"
-            "modo-session:modo-session"
-            "modo-auth:modo-auth"
-            "modo-cli:modo-cli"
-          )
+          ROOT_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
-          # Query crates.io HTTP API for the latest published version of a crate.
           crate_version() {
             curl -sf "https://crates.io/api/v1/crates/$1" \
               | sed -n 's/.*"max_version"\s*:\s*"\([^"]*\)".*/\1/p'
           }
 
+          PUBLISHED=$(crate_version "modo") || PUBLISHED=""
+
+          if [ "$ROOT_VERSION" = "$PUBLISHED" ]; then
+            echo "Version $ROOT_VERSION unchanged — nothing to publish"
+            exit 0
+          fi
+
+          echo "Publishing all crates at version $ROOT_VERSION (was ${PUBLISHED:-<new>})..."
+
+          CRATES=(
+            modo-macros
+            modo-db-macros
+            modo-jobs-macros
+            modo-upload-macros
+            modo
+            modo-db
+            modo-email
+            modo-tenant
+            modo-upload
+            modo-jobs
+            modo-session
+            modo-auth
+            modo-cli
+          )
+
           published=0
 
-          for entry in "${CRATES[@]}"; do
-            dir="${entry%%:*}"
-            name="${entry##*:}"
-            toml="$dir/Cargo.toml"
-
-            old_version=$(crate_version "$name") || old_version=""
-            new_version=$(grep '^version' "$toml" | head -1 | sed 's/.*"\(.*\)"/\1/')
-
-            if [ "$old_version" = "$new_version" ]; then
-              echo "::debug::$name $new_version unchanged — skipping"
-              continue
-            fi
-
-            echo "Publishing $name $new_version (was ${old_version:-<new>})..."
+          for name in "${CRATES[@]}"; do
+            echo "Publishing $name $ROOT_VERSION..."
             if ! publish_output=$(cargo publish -p "$name" 2>&1); then
               if echo "$publish_output" | grep -q "already exists"; then
-                echo "$name $new_version already on crates.io — skipping"
+                echo "$name $ROOT_VERSION already on crates.io — skipping"
                 continue
               fi
               echo "$publish_output" >&2
