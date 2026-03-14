@@ -225,7 +225,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 // Extract the pattern ident for the call arg
                 let ident = extract_pat_ident(param_pat);
                 setup_stmts.push(quote! {
-                    let #ident = modo_jobs::modo::extractors::service::Service(ctx.service::<#inner_ty>()?);
+                    let #ident = modo_jobs::modo::extractor::service::Service(ctx.service::<#inner_ty>()?);
                 });
                 call_args.push(quote! { #ident });
             }
