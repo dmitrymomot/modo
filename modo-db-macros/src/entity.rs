@@ -135,6 +135,8 @@ struct FieldAttrs {
     via: Option<String>,
     renamed_from: Option<String>,
     auto: Option<String>,
+    to_column: Option<String>,
+    target: Option<String>,
 }
 
 enum FieldKind {
@@ -300,6 +302,14 @@ fn parse_field_attrs(field: &mut syn::Field) -> Result<FieldAttrs> {
                     }
                     attrs.auto = Some(val);
                 }
+                "to_column" => {
+                    let lit: LitStr = meta.value()?.parse()?;
+                    attrs.to_column = Some(lit.value());
+                }
+                "target" => {
+                    let lit: LitStr = meta.value()?.parse()?;
+                    attrs.target = Some(lit.value());
+                }
                 other => {
                     return Err(meta.error(format!("unknown entity field attribute: {other}")));
                 }
@@ -437,6 +447,13 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
     let pk_count = parsed_fields.iter().filter(|f| f.attrs.primary_key).count();
 
+    if pk_count == 0 {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "at least one field must be marked with #[entity(primary_key)]",
+        ));
+    }
+
     for f in &parsed_fields {
         if f.attrs.auto.is_some() && !f.attrs.primary_key {
             return Err(syn::Error::new_spanned(
@@ -538,7 +555,8 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             let target_mod = format_ident!("{}", to_snake_case(target));
             let variant_name = format_ident!("{target}");
             let from_col_str = format!("Column::{}", to_pascal_case(&f.name.to_string()));
-            let to_col_str = format!("super::{target_mod}::Column::Id");
+            let to_col_name = f.attrs.to_column.as_deref().unwrap_or("Id");
+            let to_col_str = format!("super::{target_mod}::Column::{to_col_name}");
             let belongs_to_str = format!("super::{target_mod}::Entity");
 
             let mut rel_attrs = vec![
@@ -576,11 +594,15 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             continue;
         }
 
-        let pascal = to_pascal_case(&f.name.to_string());
-        let target = if f.attrs.has_many {
-            pascal.trim_end_matches('s').to_string()
+        let target = if let Some(ref t) = f.attrs.target {
+            t.clone()
         } else {
-            pascal
+            let pascal = to_pascal_case(&f.name.to_string());
+            if f.attrs.has_many {
+                pascal.trim_end_matches('s').to_string()
+            } else {
+                pascal
+            }
         };
 
         let target_mod = format_ident!("{}", to_snake_case(&target));
@@ -931,6 +953,13 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         quote! {}
     };
 
+    let is_insert_used = !auto_field_stmts.is_empty() || struct_attrs.timestamps;
+    let suppress_unused_is_insert = if is_insert_used {
+        quote! {}
+    } else {
+        quote! { let _ = is_insert; }
+    };
+
     let record_impl = quote! {
         #[allow(clippy::needless_update)]
         impl modo_db::Record for #struct_name {
@@ -955,6 +984,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
             }
 
             fn apply_auto_fields(am: &mut #mod_name::ActiveModel, is_insert: bool) {
+                #suppress_unused_is_insert
                 #(#auto_field_stmts)*
                 #timestamp_auto_stmts
             }
@@ -1044,11 +1074,16 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         }
 
         let field_name = &f.name;
-        let pascal = to_pascal_case(&field_name.to_string());
-        let target = if f.attrs.has_many {
-            pascal.trim_end_matches('s').to_string()
+        let pk_field_name = &pk_fields[0].name;
+        let target = if let Some(ref t) = f.attrs.target {
+            t.clone()
         } else {
-            pascal.clone()
+            let pascal = to_pascal_case(&field_name.to_string());
+            if f.attrs.has_many {
+                pascal.trim_end_matches('s').to_string()
+            } else {
+                pascal.clone()
+            }
         };
 
         let target_ident = format_ident!("{target}");
@@ -1065,7 +1100,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     use modo_db::sea_orm::QueryFilter;
                     use modo_db::sea_orm::ColumnTrait;
                     #target_mod::Entity::find()
-                        .filter(#target_mod::Column::#fk_col_pascal.eq(&self.id))
+                        .filter(#target_mod::Column::#fk_col_pascal.eq(&self.#pk_field_name))
                         .all(db)
                         .await
                         .map_err(modo_db::db_err_to_error)
@@ -1080,7 +1115,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                     use modo_db::sea_orm::QueryFilter;
                     use modo_db::sea_orm::ColumnTrait;
                     #target_mod::Entity::find()
-                        .filter(#target_mod::Column::#fk_col_pascal.eq(&self.id))
+                        .filter(#target_mod::Column::#fk_col_pascal.eq(&self.#pk_field_name))
                         .one(db)
                         .await
                         .map_err(modo_db::db_err_to_error)
@@ -1140,17 +1175,22 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
                 /// Restore a soft-deleted record by clearing `deleted_at`.
                 pub async fn restore(&mut self, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
+                    use modo_db::DefaultHooks;
                     self.deleted_at = None;
+                    self.before_save()?;
                     let mut am = <Self as modo_db::Record>::into_active_model_full(self);
                     <Self as modo_db::Record>::apply_auto_fields(&mut am, false);
                     use modo_db::sea_orm::ActiveModelTrait;
                     let model = am.update(db).await.map_err(modo_db::db_err_to_error)?;
                     *self = Self::from(model);
+                    self.after_save()?;
                     Ok(())
                 }
 
                 /// Permanently delete this record from the database (hard delete).
                 pub async fn force_delete(self, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
+                    use modo_db::DefaultHooks;
+                    self.before_delete()?;
                     modo_db::do_delete(self, db).await
                 }
 
@@ -1160,8 +1200,11 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 /// Shadows the trait's `delete_many` which would perform a hard DELETE.
                 pub fn delete_many() -> modo_db::EntityUpdateMany<#mod_name::Entity> {
                     use modo_db::sea_orm::EntityTrait as _;
+                    use modo_db::sea_orm::QueryFilter;
+                    use modo_db::sea_orm::ColumnTrait;
                     let now = modo_db::chrono::Utc::now();
                     let mut update = modo_db::EntityUpdateMany::new(#mod_name::Entity::update_many());
+                    update = update.filter(#mod_name::Column::DeletedAt.is_null());
                     update = update.col_expr(
                         #mod_name::Column::DeletedAt,
                         modo_db::sea_orm::sea_query::Expr::value(Some(now)),
