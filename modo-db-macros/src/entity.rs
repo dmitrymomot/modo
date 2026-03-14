@@ -1107,6 +1107,18 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let soft_delete_methods = if struct_attrs.soft_delete {
         let force_delete_by_id_method = gen_force_delete_by_id(&pk_fields, &mod_name);
 
+        // delete_many: pre-set deleted_at (and updated_at if timestamps enabled)
+        let delete_many_updated_at = if struct_attrs.timestamps {
+            quote! {
+                update = update.col_expr(
+                    #mod_name::Column::UpdatedAt,
+                    modo_db::sea_orm::sea_query::Expr::value(now),
+                );
+            }
+        } else {
+            quote! {}
+        };
+
         quote! {
             impl #struct_name {
                 /// Query that includes soft-deleted records.
@@ -1142,6 +1154,20 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 }
 
                 #force_delete_by_id_method
+
+                /// Bulk soft-delete builder — UPDATE SET deleted_at = now() (and updated_at if timestamps enabled).
+                /// Shadows the trait's `delete_many` which would perform a hard DELETE.
+                pub fn delete_many() -> modo_db::EntityUpdateMany<#mod_name::Entity> {
+                    use modo_db::sea_orm::EntityTrait as _;
+                    let now = modo_db::chrono::Utc::now();
+                    let mut update = modo_db::EntityUpdateMany::new(#mod_name::Entity::update_many());
+                    update = update.col_expr(
+                        #mod_name::Column::DeletedAt,
+                        modo_db::sea_orm::sea_query::Expr::value(Some(now)),
+                    );
+                    #delete_many_updated_at
+                    update
+                }
 
                 /// Bulk hard-delete builder (bypasses soft-delete).
                 pub fn force_delete_many() -> modo_db::EntityDeleteMany<#mod_name::Entity> {
@@ -1276,6 +1302,13 @@ fn gen_string_pk_methods(
     };
 
     let delete_body = if struct_attrs.soft_delete {
+        let updated_at_expr = if struct_attrs.timestamps {
+            quote! {
+                .col_expr(#mod_name::Column::UpdatedAt, modo_db::sea_orm::sea_query::Expr::value(now))
+            }
+        } else {
+            quote! {}
+        };
         quote! {
             use modo_db::sea_orm::EntityTrait;
             use modo_db::sea_orm::ColumnTrait;
@@ -1285,6 +1318,7 @@ fn gen_string_pk_methods(
                 .filter(#mod_name::Column::#pk_col_pascal.eq(id))
                 .filter(#mod_name::Column::DeletedAt.is_null())
                 .col_expr(#mod_name::Column::DeletedAt, modo_db::sea_orm::sea_query::Expr::value(Some(now)))
+                #updated_at_expr
                 .exec(db)
                 .await
                 .map_err(modo_db::db_err_to_error)?;
@@ -1347,6 +1381,13 @@ fn gen_typed_pk_methods(
     };
 
     let delete_body = if struct_attrs.soft_delete {
+        let updated_at_expr = if struct_attrs.timestamps {
+            quote! {
+                .col_expr(#mod_name::Column::UpdatedAt, modo_db::sea_orm::sea_query::Expr::value(now))
+            }
+        } else {
+            quote! {}
+        };
         quote! {
             use modo_db::sea_orm::EntityTrait;
             use modo_db::sea_orm::ColumnTrait;
@@ -1356,6 +1397,7 @@ fn gen_typed_pk_methods(
                 .filter(#mod_name::Column::#pk_col_pascal.eq(id))
                 .filter(#mod_name::Column::DeletedAt.is_null())
                 .col_expr(#mod_name::Column::DeletedAt, modo_db::sea_orm::sea_query::Expr::value(Some(now)))
+                #updated_at_expr
                 .exec(db)
                 .await
                 .map_err(modo_db::db_err_to_error)?;
@@ -1426,6 +1468,14 @@ fn gen_composite_pk_methods(
             .collect();
         let pk_indices: Vec<syn::Index> = (0..pk_fields.len()).map(syn::Index::from).collect();
 
+        let updated_at_expr = if struct_attrs.timestamps {
+            quote! {
+                .col_expr(#mod_name::Column::UpdatedAt, modo_db::sea_orm::sea_query::Expr::value(now))
+            }
+        } else {
+            quote! {}
+        };
+
         quote! {
             use modo_db::sea_orm::EntityTrait;
             use modo_db::sea_orm::ColumnTrait;
@@ -1441,6 +1491,7 @@ fn gen_composite_pk_methods(
             let result = update
                 .filter(#mod_name::Column::DeletedAt.is_null())
                 .col_expr(#mod_name::Column::DeletedAt, modo_db::sea_orm::sea_query::Expr::value(Some(now)))
+                #updated_at_expr
                 .exec(db)
                 .await
                 .map_err(modo_db::db_err_to_error)?;
