@@ -50,6 +50,7 @@ pub mod id;
 pub mod migration;
 pub mod pagination;
 pub mod pool;
+pub mod query;
 pub mod sync;
 
 // Public API
@@ -65,6 +66,7 @@ pub use pagination::{
     CursorParams, CursorResult, PageParams, PageResult, paginate, paginate_cursor,
 };
 pub use pool::DbPool;
+pub use query::{EntityDeleteMany, EntityQuery, EntityUpdateMany};
 pub use sync::{sync_and_migrate, sync_and_migrate_group};
 
 // Re-export proc macros
