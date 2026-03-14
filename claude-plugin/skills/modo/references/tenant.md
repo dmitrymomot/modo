@@ -431,11 +431,11 @@ ownership. After extracting a `Tenant<T>`, verify that the requested resource be
 tenant before returning it:
 
 ```rust
-#[modo::handler(GET, "/projects/:project_id")]
+#[modo::handler(GET, "/projects/{project_id}")]
 async fn get_project(
     db: Service<DatabaseConnection>,
     tenant: Tenant<Workspace>,
-    modo::axum::extract::Path(project_id): modo::axum::extract::Path<String>,
+    project_id: String,
 ) -> JsonResult<ProjectResponse> {
     let project = project::Entity::find_by_id(&project_id)
         .filter(project::Column::WorkspaceId.eq(tenant.tenant_id()))

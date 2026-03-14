@@ -442,12 +442,12 @@ Use `modo_db::paginate` with `PageParams` for traditional page-number pagination
 
 ```rust
 use modo_db::{Db, PageParams, paginate};
-use modo::axum::extract::Query;
+use modo::extractor::QueryReq;
 
 #[modo::handler(GET, "/todos")]
 async fn list_todos(
     Db(db): Db,
-    Query(params): Query<PageParams>,
+    QueryReq(params): QueryReq<PageParams>,
 ) -> modo::JsonResult<modo_db::PageResult<TodoResponse>> {
     use modo_db::sea_orm::EntityTrait;
     let page = paginate(todo::Entity::find(), &*db, &params)
@@ -486,12 +486,12 @@ preferable for large datasets because it avoids offset scans.
 
 ```rust
 use modo_db::{CursorParams, CursorResult, Db, paginate_cursor};
-use modo::axum::extract::Query;
+use modo::extractor::QueryReq;
 
 #[modo::handler(GET, "/todos")]
 async fn list_todos(
     Db(db): Db,
-    Query(params): Query<CursorParams>,
+    QueryReq(params): QueryReq<CursorParams>,
 ) -> modo::JsonResult<CursorResult<TodoResponse>> {
     use modo_db::sea_orm::EntityTrait;
     let page = paginate_cursor(
