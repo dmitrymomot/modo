@@ -77,7 +77,7 @@ async fn list_users() -> JsonResult<Vec<String>> {
 }
 ```
 
-### Registering services and extractors
+### Registering services
 
 ```rust
 use modo::Service;
@@ -95,7 +95,7 @@ async fn main(
     config: modo::config::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let db = MyDatabase { /* ... */ };
-    app.config(config).managed_service(db).run().await
+    app.config(config).service(db).run().await
 }
 ```
 
@@ -121,9 +121,16 @@ async fn read_cookie(cookies: CookieManager) -> String {
 ```rust
 use modo::CorsConfig;
 
-app.cors(CorsConfig::with_origins(&["https://example.com"]))
-   .run()
-   .await
+#[modo::main]
+async fn main(
+    app: modo::app::AppBuilder,
+    config: modo::config::AppConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    app.config(config)
+       .cors(CorsConfig::with_origins(&["https://example.com"]))
+       .run()
+       .await
+}
 ```
 
 ### Graceful shutdown
@@ -141,7 +148,13 @@ impl GracefulShutdown for JobQueue {
     }
 }
 
-app.managed_service(JobQueue { /* ... */ }).run().await
+#[modo::main]
+async fn main(
+    app: modo::app::AppBuilder,
+    config: modo::config::AppConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    app.config(config).managed_service(JobQueue { /* ... */ }).run().await
+}
 ```
 
 ## Configuration
