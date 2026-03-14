@@ -79,13 +79,12 @@ async fn list_users() -> JsonResult<Vec<String>> {
 
 ### Registering services
 
-```rust
-use modo::Service;
-
-struct MyDatabase { /* ... */ }
+```rust,no_run
+use modo::HandlerResult;
+use modo_db::Db;
 
 #[modo::handler(GET, "/data")]
-async fn get_data(Service(db): Service<MyDatabase>) -> HandlerResult<String> {
+async fn get_data(Db(db): Db) -> HandlerResult<String> {
     Ok("data".to_string())
 }
 
@@ -94,7 +93,7 @@ async fn main(
     app: modo::app::AppBuilder,
     config: modo::config::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let db = MyDatabase { /* ... */ };
+    let db = modo_db::connect(&Default::default()).await?;
     app.config(config).managed_service(db).run().await
 }
 ```
