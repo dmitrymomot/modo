@@ -932,6 +932,7 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     };
 
     let record_impl = quote! {
+        #[allow(clippy::needless_update)]
         impl modo_db::Record for #struct_name {
             type Entity = #mod_name::Entity;
             type ActiveModel = #mod_name::ActiveModel;
