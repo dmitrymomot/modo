@@ -505,6 +505,7 @@ in place of `SessionManager` after registering a `UserProviderService`.
 | `SessionStore` | https://docs.rs/modo-session/latest/modo_session/struct.SessionStore.html |
 | `SessionConfig` | https://docs.rs/modo-session/latest/modo_session/struct.SessionConfig.html |
 | `SessionData` | https://docs.rs/modo-session/latest/modo_session/struct.SessionData.html |
+| `SessionMeta` | https://docs.rs/modo-session/latest/modo_session/struct.SessionMeta.html |
 | `SessionId` | https://docs.rs/modo-session/latest/modo_session/struct.SessionId.html |
 | `SessionToken` | https://docs.rs/modo-session/latest/modo_session/struct.SessionToken.html |
 | `user_id_from_extensions` | https://docs.rs/modo-session/latest/modo_session/fn.user_id_from_extensions.html |
