@@ -18,7 +18,7 @@ versioned migrations, pagination helpers, and group-scoped sync for multi-databa
 
 | Feature | Effect |
 |---------|--------|
-| `sqlite` *(default)* | Enables SQLite via `sqlx-sqlite`. Applies WAL mode, busy_timeout, and foreign key pragmas on connect. |
+| `sqlite` *(default)* | Enables SQLite via `sqlx-sqlite`. Applies WAL mode, busy_timeout, synchronous=NORMAL, and foreign key pragmas on connect. |
 | `postgres` | Enables PostgreSQL via `sqlx-postgres`. |
 
 ---
@@ -352,6 +352,14 @@ let top5 = Todo::query()
     .filter(todo::Column::Completed.eq(false))
     .order_by_desc(todo::Column::CreatedAt)
     .limit(5)
+    .all(&*db)
+    .await?;
+
+// Offset (for manual pagination -- prefer .paginate() or .paginate_cursor() instead)
+let page2 = Todo::query()
+    .order_by_asc(todo::Column::CreatedAt)
+    .offset(20)
+    .limit(10)
     .all(&*db)
     .await?;
 ```

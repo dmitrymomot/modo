@@ -61,7 +61,7 @@ All macros listed below have been verified against the proc-macro source files
 | `t!(i18n, "key")` / `t!(i18n, "key", name = expr)` | modo-macros | i18n translation lookup; adding `count =` switches to plural form |
 | `#[derive(Sanitize)]` | modo-macros | Input sanitization; use `#[clean(trim, lowercase, ...)]` on fields |
 | `#[derive(Validate)]` | modo-macros | Input validation; use `#[validate(required, email, min_length = N, ...)]` on fields |
-| `#[modo_db::entity(table = "name")]` | modo-db-macros | Declares a SeaORM entity with auto-registration; struct-level options: `timestamps`, `soft_delete`; optional `group` |
+| `#[modo_db::entity(table = "name")]` | modo-db-macros | Declares a SeaORM entity with auto-registration; struct-level options: `timestamps`, `soft_delete`, `index(columns = [...])`, `framework`; optional `group` |
 | `#[modo_db::migration(version = N, description = "text")]` | modo-db-macros | Versioned escape-hatch SQL migration; async fn accepting `&sea_orm::DatabaseConnection`; optional `group` |
 | `#[job(queue = "name")]` / `#[job(cron = "* * * * * *")]` | modo-jobs-macros | Defines a background job or in-memory cron job; additional args: `priority`, `max_attempts`, `timeout` |
 | `#[derive(FromMultipart)]` | modo-upload-macros | Parses `multipart/form-data` into a struct; use `#[upload(max_size, accept, min_count, max_count)]` on file fields |
