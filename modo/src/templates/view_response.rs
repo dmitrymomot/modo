@@ -62,7 +62,7 @@ impl IntoResponse for ViewResponse {
                     resp
                 }
                 Err(_) => {
-                    tracing::error!(url = %url, "Invalid redirect URL");
+                    tracing::error!("Invalid redirect URL");
                     StatusCode::INTERNAL_SERVER_ERROR.into_response()
                 }
             },
@@ -74,7 +74,7 @@ impl IntoResponse for ViewResponse {
                     resp
                 }
                 Err(_) => {
-                    tracing::error!(url = %url, "Invalid HX-Redirect URL");
+                    tracing::error!("Invalid HX-Redirect URL");
                     StatusCode::INTERNAL_SERVER_ERROR.into_response()
                 }
             },
