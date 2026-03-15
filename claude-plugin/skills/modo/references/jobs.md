@@ -217,7 +217,7 @@ jobs:
   queues:
     - name: default
       concurrency: 4
-    - name: mailer
+    - name: email
       concurrency: 2
   cleanup:
     interval_secs: 3600
@@ -437,17 +437,17 @@ the app. The app enqueues a `SendEmailPayload`; the job worker sends the email.
 // Register mailer as a jobs service:
 let jobs = modo_jobs::new(&db, &config.jobs)
     .service(db.clone())
-    .service(mailer.clone())  // mailer is a jobs service, NOT an app service
+    .service(mailer)  // mailer is a jobs service, NOT an app service
     .run()
     .await?;
 
 // In the send-email job:
-#[job(queue = "mailer")]
+#[job(queue = "email")]
 async fn send_email(
     payload: SendEmailPayload,
     Service(mailer): Service<Mailer>,
 ) -> HandlerResult<()> {
-    mailer.send(payload).await?;
+    mailer.send(&SendEmail::from(payload)).await?;
     Ok(())
 }
 ```

@@ -427,7 +427,7 @@ use modo_jobs::job;
 use modo::HandlerResult;
 use modo::Service;
 
-#[job(queue = "mailer", max_attempts = 3, timeout = "30s")]
+#[job(queue = "email", max_attempts = 3, timeout = "30s")]
 async fn send_email(
     payload: SendEmailPayload,
     Service(mailer): Service<Mailer>,
@@ -473,7 +473,7 @@ use modo::HandlerResult;
 use modo::Service;
 use modo_db::Db;
 
-#[job(queue = "mailer", max_attempts = 3, timeout = "30s")]
+#[job(queue = "email", max_attempts = 3, timeout = "30s")]
 async fn send_email(
     payload: SendEmailPayload,
     Service(mailer): Service<Mailer>,
@@ -543,9 +543,10 @@ tool are unaffected.
 ## Gotchas
 
 **Mailer on jobs builder, not app.** The most common integration error is calling
-`.service(email)` on the app builder instead of the jobs builder. The app builder
-has no `.service()` method for this purpose. The mailer must be on the jobs builder
-for job handlers to resolve it via `Service<Mailer>`.
+`.service(email)` on the app builder instead of the jobs builder. The app builder's
+`.service()` registers services for HTTP handler extractors, not for job handlers.
+The mailer must be on the jobs builder for job handlers to resolve it via
+`Service<Mailer>`.
 
 **SMTPS (port 465) not supported.** Only STARTTLS (port 587) is available when
 `tls: true`. Connecting to port 465 with `tls: true` will fail at connection time.
@@ -576,7 +577,7 @@ the rendered email.
 
 **`SendEmailPayload` must be registered on a configured queue.** The job consuming
 `SendEmailPayload` must reference a queue listed in `JobsConfig.queues`. If the
-`"mailer"` queue is not in the configuration, `JobsBuilder::run()` returns an error
+`"email"` queue is not in the configuration, `JobsBuilder::run()` returns an error
 at startup.
 
 ---
