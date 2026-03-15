@@ -10,37 +10,14 @@ A batteries-included Rust framework for small monolithic web apps and APIs. Proc
 
 ## Features
 
-### Routing & Middleware
-
-`#[handler]`, `#[module]`, and `#[main]` macros wire up your app — routes auto-register via `inventory`, middleware stacks at global, module, and handler levels.
-
-### Database
-
-SQLite and Postgres via feature flags. `#[entity]` macro generates SeaORM v2 models with auto-migration, timestamps, and built-in pagination.
-
-### Sessions
-
-Database-backed sessions with cookie fingerprinting, sliding expiry, multi-device tracking, and LRU cleanup.
-
-### Authentication
-
-`UserProvider` trait for pluggable auth. `Auth<U>` and `OptionalAuth<U>` extractors with Argon2id password hashing.
-
-### Background Jobs
-
-Persistent job queue with retries and exponential backoff. Cron scheduling, graceful shutdown, and `inventory`-based auto-discovery.
-
-### File Uploads
-
-`#[derive(FromMultipart)]` for declarative multipart parsing. Per-field validation (size, MIME type). Local and S3 storage backends via OpenDAL.
-
-### Email
-
-Markdown-to-HTML templates with SMTP and Resend transports. Multi-tenant sender profiles and locale-aware rendering.
-
-### Frontend
-
-MiniJinja templates, HTMX support, Server-Sent Events, CSRF protection, i18n, flash messages, and static file embedding.
+- **Routing & Middleware** — `#[handler]`, `#[module]`, and `#[main]` macros wire up your app — routes auto-register via `inventory`, middleware stacks at global, module, and handler levels.
+- **Database** — SQLite and Postgres via feature flags. `#[entity]` macro generates SeaORM v2 models with auto-migration, timestamps, and built-in pagination.
+- **Sessions** — Database-backed sessions with cookie fingerprinting, sliding expiry, multi-device tracking, and LRU cleanup.
+- **Authentication** — `UserProvider` trait for pluggable auth. `Auth<U>` and `OptionalAuth<U>` extractors with Argon2id password hashing.
+- **Background Jobs** — Persistent job queue with retries and exponential backoff. Cron scheduling, graceful shutdown, and `inventory`-based auto-discovery.
+- **File Uploads** — `#[derive(FromMultipart)]` for declarative multipart parsing. Per-field validation (size, MIME type). Local and S3 storage backends via OpenDAL.
+- **Email** — Markdown-to-HTML templates with SMTP and Resend transports. Multi-tenant sender profiles and locale-aware rendering.
+- **Frontend** — MiniJinja templates, HTMX support, Server-Sent Events, CSRF protection, i18n, flash messages, and static file embedding.
 
 ## Quick Start
 
@@ -62,7 +39,7 @@ modo new my-app --template minimal    # bare-bones, no database
 
 | Template  | Description                                            | Database |
 | --------- | ------------------------------------------------------ | -------- |
-| `web`     | Full-stack with HTMX, auth, jobs, email, uploads, i18n | Optional |
+| `web`     | Full-stack with HTMX, Tailwind CSS, auth, jobs, email, uploads, i18n | Optional |
 | `api`     | JSON API with handlers and models                      | Optional |
 | `worker`  | Background job worker, no HTTP handlers                | Optional |
 | `minimal` | Bare-bones, config only                                | None     |
@@ -73,10 +50,16 @@ Then:
 
 ```sh
 cd my-app
-just dev
+just assets-download   # web template only — download HTMX, Alpine.js (first time)
+just dev               # start dev server
 ```
 
-Here's what a handler looks like:
+> **Note:** modo uses [`just`](https://github.com/casey/just) as its command runner. Install it with `cargo install just` or see the [installation docs](https://github.com/casey/just#installation).
+
+## Code Showcases
+
+<details>
+<summary><strong>Handler example</strong></summary>
 
 ```rust
 use modo::HandlerResult;
@@ -124,7 +107,7 @@ async fn main(
 }
 ```
 
-## Code Showcases
+</details>
 
 <details>
 <summary><strong>Define a database entity</strong></summary>
@@ -216,7 +199,8 @@ async fn update_profile(
 
 </details>
 
-## Workspace Crates
+<details>
+<summary><strong>Workspace Crates</strong></summary>
 
 | Crate                | Description                                                                  |
 | -------------------- | ---------------------------------------------------------------------------- |
@@ -234,7 +218,10 @@ async fn update_profile(
 | `modo-upload-macros` | `#[derive(FromMultipart)]` proc macro                                        |
 | `modo-cli`           | CLI tool for scaffolding modo projects                                       |
 
-## Examples
+</details>
+
+<details>
+<summary><strong>Examples</strong></summary>
 
 | Example         | Description                                             | Run                          |
 | --------------- | ------------------------------------------------------- | ---------------------------- |
@@ -246,7 +233,10 @@ async fn update_profile(
 | `sse-chat`      | Real-time chat with SSE, sessions, and CSRF             | `cargo run -p sse-chat`      |
 | `sse-dashboard` | Live-updating dashboard with SSE streaming              | `cargo run -p sse-dashboard` |
 
-## Feature Flags
+</details>
+
+<details>
+<summary><strong>Feature Flags</strong></summary>
 
 The `modo` core crate has these optional features (all off by default):
 
@@ -259,11 +249,29 @@ The `modo` core crate has these optional features (all off by default):
 | `static-fs`    | Serve static files from a directory at runtime     |
 | `static-embed` | Embed static files into the binary at compile time |
 
+</details>
+
 ## Project Status
 
 **Beta** — under active development. APIs may still change.
 
 Found a bug or have a feature request? [Open an issue](https://github.com/dmitrymomot/modo/issues).
+
+## Claude Code Plugin
+
+Install the modo development plugin for Claude Code:
+
+1. Add the modo marketplace:
+   ```sh
+   /plugin marketplace add dmitrymomot/modo
+   ```
+
+2. Install the plugin:
+   ```sh
+   /plugin install modo-dev@modo
+   ```
+
+The plugin provides context-aware skills for building modo apps — handlers, database entities, jobs, templates, and more.
 
 ## License
 
