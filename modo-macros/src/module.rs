@@ -59,8 +59,20 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     // Rewrite inner #[handler(METHOD, "/path")] attrs to include module = "mod_name"
     if let Some((_brace, ref mut items)) = module.content {
         for item in items.iter_mut() {
-            if let Item::Fn(func) = item {
-                rewrite_handler_attrs(func, &mod_name_str)?;
+            match item {
+                Item::Fn(func) => {
+                    rewrite_handler_attrs(func, &mod_name_str)?;
+                }
+                Item::Mod(inner_mod) => {
+                    if inner_mod.content.is_some() {
+                        return Err(syn::Error::new_spanned(
+                            &inner_mod.ident,
+                            "nested modules inside #[module] are not supported; \
+                             handlers in nested modules would not receive the module prefix",
+                        ));
+                    }
+                }
+                _ => {}
             }
         }
     }

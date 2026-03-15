@@ -33,14 +33,14 @@ Prioritized recommendations from comprehensive framework review (2026-03-15).
 | ~~BUG-15~~ | ~~Add `SetSensitiveResponseHeadersLayer` for Set-Cookie~~          | ~~S~~  | ~~modo~~        | FIXED          |
 | ~~BUG-17~~ | ~~Replace `by_header` `.expect()` with `Result`~~                  | ~~S~~  | ~~modo~~        | FIXED          |
 | ~~BUG-18~~ | ~~Fix `cancel()` to return 404/409 instead of 500~~                | ~~S~~  | ~~modo-jobs~~   | FIXED          |
-| BUG-07     | Fix `Sanitize` derive for generic structs                          | M      | modo-macros     |
-| BUG-08     | Exclude `created_at` from UPDATE active models                     | M      | modo-db-macros  |
+| ~~BUG-07~~ | ~~Fix `Sanitize` derive for generic structs~~                      | ~~M~~  | ~~modo-macros~~     | FIXED          |
+| ~~BUG-08~~ | ~~Exclude `created_at` from UPDATE active models~~                 | ~~M~~  | ~~modo-db-macros~~  | FIXED          |
 | ~~BUG-11~~ | ~~Cache `Ok(None)` in tenant resolver~~                            | ~~S~~  | ~~modo-tenant~~ | FIXED          |
-| BUG-13     | Handle nested modules in `#[module]`                               | M      | modo-macros     |
-| BUG-14     | Fix `has_many` pluralization (use heck or require explicit target) | M      | modo-db-macros  |
-| BUG-01     | Fix `AppBuilder` call order config override issue                  | M      | modo            |
+| ~~BUG-13~~ | ~~Handle nested modules in `#[module]`~~                           | ~~M~~  | ~~modo-macros~~     | FIXED          |
+| ~~BUG-14~~ | ~~Fix `has_many` pluralization (use heck or require explicit target)~~ | ~~M~~ | ~~modo-db-macros~~ | FIXED          |
+| ~~BUG-01~~ | ~~Fix `AppBuilder` call order config override issue~~              | ~~M~~  | ~~modo~~            | FIXED          |
 | ~~BUG-03~~ | ~~Fix `ContextLayer` to merge instead of overwrite~~               | ~~S~~  | ~~modo~~        | FIXED          |
-| BUG-09     | Fix `before_save` mutation-before-write issue                      | M      | modo-db-macros  |
+| ~~BUG-09~~ | ~~Fix `before_save` mutation-before-write issue~~                  | ~~M~~  | ~~modo-db-macros~~  | FIXED          |
 | ~~BUG-10~~ | ~~Fix stale reaper + timeout handler race condition~~              | ~~M~~  | ~~modo-jobs~~   | FALSE POSITIVE |
 | ~~BUG-16~~ | ~~Add `OptionalRateLimitInfo` extractor~~                          | ~~S~~  | ~~modo~~        | FIXED          |
 

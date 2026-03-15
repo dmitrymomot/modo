@@ -1,5 +1,5 @@
 use crate::config::{
-    HttpConfig, RateLimitConfig, SecurityHeadersConfig, ServerConfig, TrailingSlash, parse_size,
+    RateLimitConfig, SecurityHeadersConfig, ServerConfig, TrailingSlash, parse_size,
 };
 use crate::cors::CorsConfig;
 use crate::error::HttpError;
@@ -106,7 +106,10 @@ pub struct AppBuilder {
     readiness_checks: Vec<ReadinessCheck>,
     enable_request_logging: bool,
     // Middleware overrides (take precedence over YAML config)
-    override_http: Option<HttpConfig>,
+    override_timeout: Option<Option<u64>>,
+    override_body_limit: Option<Option<String>>,
+    override_compression: Option<bool>,
+    override_catch_panic: Option<bool>,
     override_security_headers: Option<SecurityHeadersConfig>,
     override_rate_limit: Option<Option<RateLimitConfig>>,
     override_trailing_slash: Option<TrailingSlash>,
@@ -129,7 +132,10 @@ impl AppBuilder {
             managed_shutdowns: Vec::new(),
             readiness_checks: Vec::new(),
             enable_request_logging: true,
-            override_http: None,
+            override_timeout: None,
+            override_body_limit: None,
+            override_compression: None,
+            override_catch_panic: None,
             override_security_headers: None,
             override_rate_limit: None,
             override_trailing_slash: None,
@@ -220,31 +226,31 @@ impl AppBuilder {
 
     /// Override the request timeout in seconds. Overrides `server.http.timeout` from YAML.
     pub fn timeout(mut self, secs: u64) -> Self {
-        self.ensure_http_override().timeout = Some(secs);
+        self.override_timeout = Some(Some(secs));
         self
     }
 
     /// Disable the request timeout. Overrides `server.http.timeout` from YAML.
     pub fn no_timeout(mut self) -> Self {
-        self.ensure_http_override().timeout = None;
+        self.override_timeout = Some(None);
         self
     }
 
     /// Set the maximum request body size (e.g. `"2mb"`, `"512kb"`). Overrides `server.http.body_limit`.
     pub fn body_limit(mut self, limit: &str) -> Self {
-        self.ensure_http_override().body_limit = Some(limit.to_string());
+        self.override_body_limit = Some(Some(limit.to_string()));
         self
     }
 
     /// Enable or disable response compression. Overrides `server.http.compression`.
     pub fn compression(mut self, enabled: bool) -> Self {
-        self.ensure_http_override().compression = enabled;
+        self.override_compression = Some(enabled);
         self
     }
 
     /// Enable or disable the catch-panic middleware. Overrides `server.http.catch_panic`.
     pub fn catch_panic(mut self, enabled: bool) -> Self {
-        self.ensure_http_override().catch_panic = enabled;
+        self.override_catch_panic = Some(enabled);
         self
     }
 
@@ -301,18 +307,6 @@ impl AppBuilder {
         self
     }
 
-    fn ensure_http_override(&mut self) -> &mut HttpConfig {
-        if self.override_http.is_none() {
-            let http = self
-                .app_config
-                .as_ref()
-                .map(|c| c.server.http.clone())
-                .unwrap_or_default();
-            self.override_http = Some(http);
-        }
-        self.override_http.as_mut().unwrap()
-    }
-
     /// Build and run the HTTP server, blocking until shutdown is complete.
     ///
     /// Auto-discovers routes and modules registered via `#[modo::handler]` and
@@ -322,8 +316,17 @@ impl AppBuilder {
         // Resolve effective config (builder overrides > YAML config)
         let app_config = self.app_config.unwrap_or_default();
         let mut server_config = app_config.server.clone();
-        if let Some(ref http) = self.override_http {
-            server_config.http = http.clone();
+        if let Some(ref t) = self.override_timeout {
+            server_config.http.timeout = *t;
+        }
+        if let Some(ref bl) = self.override_body_limit {
+            server_config.http.body_limit = bl.clone();
+        }
+        if let Some(c) = self.override_compression {
+            server_config.http.compression = c;
+        }
+        if let Some(cp) = self.override_catch_panic {
+            server_config.http.catch_panic = cp;
         }
         if let Some(ref sec) = self.override_security_headers {
             server_config.security_headers = sec.clone();

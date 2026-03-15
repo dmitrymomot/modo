@@ -72,6 +72,13 @@ pub fn expand(input: TokenStream) -> Result<TokenStream> {
     let input: DeriveInput = parse2(input)?;
     let struct_name = &input.ident;
 
+    if !input.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &input.generics,
+            "Sanitize cannot be derived for generic structs; inventory registration requires concrete types",
+        ));
+    }
+
     let fields = match &input.data {
         Data::Struct(s) => match &s.fields {
             Fields::Named(named) => &named.named,

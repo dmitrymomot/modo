@@ -596,13 +596,13 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
         let target = if let Some(ref t) = f.attrs.target {
             t.clone()
+        } else if f.attrs.has_many {
+            return Err(syn::Error::new_spanned(
+                &f.name,
+                "has_many requires explicit target: #[entity(has_many, target = \"EntityName\")]",
+            ));
         } else {
-            let pascal = to_pascal_case(&f.name.to_string());
-            if f.attrs.has_many {
-                pascal.trim_end_matches('s').to_string()
-            } else {
-                pascal
-            }
+            to_pascal_case(&f.name.to_string())
         };
 
         let target_mod = format_ident!("{}", to_snake_case(&target));
@@ -809,10 +809,8 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         .collect();
 
     if struct_attrs.timestamps {
-        am_full_stmts
-            .push(quote! { created_at: modo_db::sea_orm::ActiveValue::Set(self.created_at), });
-        am_full_stmts
-            .push(quote! { updated_at: modo_db::sea_orm::ActiveValue::Set(self.updated_at), });
+        am_full_stmts.push(quote! { created_at: modo_db::sea_orm::ActiveValue::NotSet, });
+        am_full_stmts.push(quote! { updated_at: modo_db::sea_orm::ActiveValue::NotSet, });
     }
 
     if struct_attrs.soft_delete {
@@ -1012,8 +1010,9 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
 
             pub async fn update(&mut self, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
                 use modo_db::DefaultHooks;
-                self.before_save()?;
-                let refreshed = modo_db::do_update(self, db).await?;
+                let mut candidate = self.clone();
+                candidate.before_save()?;
+                let refreshed = modo_db::do_update(&candidate, db).await?;
                 *self = refreshed;
                 self.after_save()?;
                 Ok(())
@@ -1077,13 +1076,13 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
         let pk_field_name = &pk_fields[0].name;
         let target = if let Some(ref t) = f.attrs.target {
             t.clone()
+        } else if f.attrs.has_many {
+            return Err(syn::Error::new_spanned(
+                &f.name,
+                "has_many requires explicit target: #[entity(has_many, target = \"EntityName\")]",
+            ));
         } else {
-            let pascal = to_pascal_case(&field_name.to_string());
-            if f.attrs.has_many {
-                pascal.trim_end_matches('s').to_string()
-            } else {
-                pascal.clone()
-            }
+            to_pascal_case(&field_name.to_string())
         };
 
         let target_ident = format_ident!("{target}");
@@ -1176,9 +1175,10 @@ pub fn expand(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
                 /// Restore a soft-deleted record by clearing `deleted_at`.
                 pub async fn restore(&mut self, db: &impl modo_db::sea_orm::ConnectionTrait) -> Result<(), modo::Error> {
                     use modo_db::DefaultHooks;
-                    self.deleted_at = None;
-                    self.before_save()?;
-                    let mut am = <Self as modo_db::Record>::into_active_model_full(self);
+                    let mut candidate = self.clone();
+                    candidate.deleted_at = None;
+                    candidate.before_save()?;
+                    let mut am = <Self as modo_db::Record>::into_active_model_full(&candidate);
                     <Self as modo_db::Record>::apply_auto_fields(&mut am, false);
                     use modo_db::sea_orm::ActiveModelTrait;
                     let model = am.update(db).await.map_err(modo_db::db_err_to_error)?;
